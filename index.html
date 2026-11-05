@@ -68,7 +68,9 @@ const CONFIG = {
   shootingStars: true,        // streaks across the sky once the bouquet has bloomed
   shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
   pushStrength: 1,            // how far the bouquet leans away when touched
-  holdSeconds: 3,             // press and hold this long anywhere to replay
+  holdSeconds: 3,
+  moon: true,                 // ASCII moon in the top-left corner
+  moonSize: 0.11,             // radius as a fraction of the smaller screen side             // press and hold this long anywhere to replay
 };
 
 /* Characters ordered from light to dense */
@@ -183,7 +185,30 @@ const BLOOM_END = Math.max(...FLOWERS.map(f => f.bloomStart + f.bloomDur));
 const canvas = document.getElementById('c');
 const mctx = canvas.getContext('2d');
 const scene = document.createElement('canvas');
-const sctx = scene.getContext('2d', { willReadFrequently: true });
+/* Reading the scene's pixels every frame with getImageData makes a new buffer each time,
+   which iPhone Safari can't free fast enough (it kills and reloads the page). Instead the
+   scene is copied through a tiny WebGL context into ONE reused buffer: no per-frame garbage. */
+const GLR = (() => {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 1;
+    const gl = c.getContext('webgl', { antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false });
+    if (!gl) return null;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    const fb = gl.createFramebuffer();
+    c.addEventListener('webglcontextlost', (e) => { e.preventDefault(); useGL = false; });
+    return { gl, tex, fb };
+  } catch (_) { return null; }
+})();
+let useGL = !!GLR, glChecked = false;
+const sctx = scene.getContext('2d', useGL ? {} : { willReadFrequently: true });
+let frameImg = null, frameView = null;   // reused every frame
 const tint = document.createElement('canvas');
 const mask = document.createElement('canvas');      // where the bouquet is (1 px per cell)
 const mkctx = mask.getContext('2d');
@@ -192,6 +217,7 @@ const kctx = sky.getContext('2d');
 let maskImg = null;
 const tctx = tint.getContext('2d');
 
+let MOON = null, moonImg = null;
 let quality = 1, FONT = '', xScale = 1, rowChars = [];
 let W, H, dpr, gw, gh, cellW, cellH, cols, rows, S, CX, TOP, jitter, stars = [];
 
@@ -217,7 +243,9 @@ function resize(){
   tint.width = cols; tint.height = rows;
   mask.width = cols; mask.height = rows;
   maskImg = mkctx.createImageData(cols, rows);
-  sky.width = canvas.width; sky.height = canvas.height;
+  frameImg = tctx.createImageData(cols, rows);
+  frameView = new Uint8Array(frameImg.data.buffer);
+  sky.width = sky.height = Math.ceil(340 * dpr);   // small scratch canvas, reused for each shooting star
 
   // each row is drawn as one string; stretch the font so every character is exactly one cell wide
   FONT = `bold ${gh * 1.02}px Menlo, Consolas, "DejaVu Sans Mono", "Courier New", monospace`;
@@ -230,6 +258,16 @@ function resize(){
   jitter = new Int8Array(cols * rows);
   for (let i = 0; i < jitter.length; i++) jitter[i] = Math.floor(jr() * 5) - 2;
 
+
+  // moon: top-left, modest size
+  const mR = Math.max(34, Math.min(85, Math.min(W, H) * CONFIG.moonSize));
+  const pad = Math.max(18, Math.min(W, H) * 0.05);
+  MOON = { cx: pad + mR, cy: pad + mR, R: mR };
+  MOON.i0 = Math.max(0, Math.floor((MOON.cx - mR) / cellW) - 1);
+  MOON.j0 = Math.max(0, Math.floor((MOON.cy - mR) / cellH) - 1);
+  MOON.w = Math.min(cols - MOON.i0, Math.ceil(2 * mR / cellW) + 3);
+  MOON.h = Math.min(rows - MOON.j0, Math.ceil(2 * mR / cellH) + 3);
+  moonImg = sctx.createImageData(MOON.w, MOON.h);
 
   const sr = mulberry32(5);
   stars = [];
@@ -392,9 +430,53 @@ const msgEl = document.getElementById('msg');
 const hintEl = document.getElementById('hint');
 msgEl.textContent = CONFIG.message;
 
+/* ---------- Moon: a shaded sphere with seas and craters, slowly turning ---------- */
+function hash3(x, y, z){ let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function noise3(x, y, z){
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+  const l = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz);
+  return l(l(l(c(0,0,0), c(1,0,0), u), l(c(0,1,0), c(1,1,0), u), v),
+           l(l(c(0,0,1), c(1,0,1), u), l(c(0,1,1), c(1,1,1), u), v), w);
+}
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const MOON_LIT = [246, 244, 238], MOON_DARK = [58, 72, 108];
+
+function drawMoon(T, time){
+  if (!CONFIG.moon || !MOON) return;
+  const fade = easeInOut(prog(T, 0.3, 2.2));
+  if (fade <= 0) return;
+  const { i0, j0, w, h, cx, cy, R } = MOON, d = moonImg.data;
+  const spin = time * 0.025, cs = Math.cos(spin), sn = Math.sin(spin);
+  const edge = R / cellW * 1.4;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const k = (j * w + i) * 4;
+      const x = ((i0 + i + 0.5) * cellW - cx) / R, y = ((j0 + j + 0.5) * cellH - cy) / R;
+      const d2 = x * x + y * y;
+      if (d2 >= 1) { d[k + 3] = 0; continue; }
+      const z = Math.sqrt(1 - d2);
+      const sx = x * cs + z * sn, sz = -x * sn + z * cs;        // turn the surface, not the light
+      const seas = smooth(0.5, 0.66, noise3(sx * 2.1 + 7, y * 2.1, sz * 2.1));
+      const detail = noise3(sx * 6 + 3, y * 6, sz * 6 + 1);
+      const crater = smooth(0.7, 0.8, noise3(sx * 11, y * 11 + 5, sz * 11));
+      const albedo = 1 - 0.34 * seas - 0.16 * (detail - 0.5) - 0.22 * crater;
+      const ndl = -0.62 * x - 0.34 * y + 0.71 * z;                 // light from the upper left
+      const lit = smooth(-0.1, 0.5, ndl);
+      const limb = 0.82 + 0.18 * z;
+      for (let c = 0; c < 3; c++) d[k + c] = lerp(MOON_DARK[c] * (0.85 + 0.15 * albedo), MOON_LIT[c] * albedo * limb, lit);
+      d[k + 3] = 255 * clamp((1 - Math.sqrt(d2)) * edge) * fade;
+    }
+  }
+  sctx.putImageData(moonImg, i0, j0);
+}
+
 function drawScene(T, time){
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.clearRect(0, 0, cols, rows);
+  drawMoon(T, time);
   // bouquet units -> scene cells (x and y scale differ because cells aren't square)
   sctx.setTransform(S / cellW, 0, 0, S / cellH, CX / cellW, TOP / cellH);
   const sw = (reduceMotion ? 0 : CONFIG.sway * 0.012 * Math.sin(time * 0.7) * prog(T, 1, 2))
@@ -436,8 +518,30 @@ function drawScene(T, time){
   for (const f of FLOWERS) drawFlower(sctx, f, T, time, px);
 }
 
+function readScene(){
+  if (useGL) {
+    try {
+      const { gl, tex, fb } = GLR;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, frameView);
+      if (!glChecked) {                      // one-time sanity check against the normal path
+        glChecked = true;
+        const ref = sctx.getImageData(0, 0, cols, rows).data;
+        let bad = 0;
+        for (let i = 3; i < ref.length; i += 4 * 7) if (Math.abs(ref[i] - frameView[i]) > 8) bad++;
+        if (bad > ref.length / 28 * 0.02) { useGL = false; return sctx.getImageData(0, 0, cols, rows); }
+      }
+      return frameImg;
+    } catch (_) { useGL = false; }
+  }
+  return sctx.getImageData(0, 0, cols, rows);
+}
+
 function asciiPass(){
-  const img = sctx.getImageData(0, 0, cols, rows);
+  const img = readScene();
   const data = img.data;
   mctx.setTransform(1, 0, 0, 1, 0, 0);
   mctx.globalCompositeOperation = 'source-over';
@@ -480,6 +584,7 @@ function asciiPass(){
   mctx.globalCompositeOperation = 'source-in';
   mctx.imageSmoothingEnabled = false;
   tctx.putImageData(img, 0, 0);
+
   mctx.drawImage(tint, 0, 0, cols * gw, rows * gh);
   mctx.globalCompositeOperation = 'source-over';
 }
@@ -532,8 +637,10 @@ function drawShooters(T, time){
     const tx = hx - s.dx * len, ty = hy - s.dy * len;
     const pad = 8 * dpr;
     const bx = Math.max(0, Math.floor(Math.min(hx, tx) - pad)), by = Math.max(0, Math.floor(Math.min(hy, ty) - pad));
-    const bw = Math.min(sky.width, Math.ceil(Math.max(hx, tx) + pad)) - bx, bh = Math.min(sky.height, Math.ceil(Math.max(hy, ty) + pad)) - by;
+    const bw = Math.min(sky.width, canvas.width - bx, Math.ceil(Math.max(hx, tx) + pad) - bx);
+    const bh = Math.min(sky.height, canvas.height - by, Math.ceil(Math.max(hy, ty) + pad) - by);
     if (bw <= 0 || bh <= 0) continue;
+    kctx.setTransform(1, 0, 0, 1, -bx, -by);       // draw in screen coordinates onto the scratch canvas
     kctx.globalCompositeOperation = 'source-over';
     kctx.clearRect(bx, by, bw, bh);
     const g = kctx.createLinearGradient(tx, ty, hx, hy);
@@ -557,7 +664,8 @@ function drawShooters(T, time){
     kctx.drawImage(mask, -gw * 0.5, -gh * 0.5, cols * gw + gw, rows * gh + gh);
     kctx.restore();
     mctx.globalCompositeOperation = 'destination-over';
-    mctx.drawImage(sky, bx, by, bw, bh, bx, by, bw, bh);
+    kctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.drawImage(sky, 0, 0, bw, bh, bx, by, bw, bh);
     mctx.globalCompositeOperation = 'source-over';
   }
 }
@@ -601,7 +709,7 @@ function adapt(now){
     if (dt < 250) { perfFrames++; perfTime += dt; }
     if (perfFrames >= 20) {
       const avg = perfTime / perfFrames;
-      if (avg > 26 && downgrades < 4 && quality > 0.45) {
+      if (avg > (MIN_FRAME_MS ? 45 : 26) && downgrades < 4 && quality > 0.45) {
         quality = Math.max(0.45, quality * (avg > 50 ? 0.65 : 0.82)); downgrades++; resize();
       }
       perfFrames = 0; perfTime = 0;
@@ -609,7 +717,12 @@ function adapt(now){
   }
   lastNow = now;
 }
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const MIN_FRAME_MS = IS_IOS ? 31 : 0;      // iPhones: 30 fps keeps Safari's memory and GPU use low
+let lastDraw = 0;
 function frame(now){
+  if (MIN_FRAME_MS && now - lastDraw < MIN_FRAME_MS) { requestAnimationFrame(frame); return; }
+  lastDraw = now;
   adapt(now);
   const T = (now - t0) / 1000 * CONFIG.speed;
   const time = now / 1000;
@@ -687,7 +800,8 @@ function tapAt(x, y){
   const time = performance.now() / 1000;
   const cx = Math.floor(x * dpr / gw), cy = Math.floor(y * dpr / gh);
   const fingerCells = Math.max(1, Math.round(10 * dpr / gh));     // ~10px of slack around a fingertip
-  if (onBouquet(cx, cy, fingerCells)) {
+  const onMoon = MOON && Math.hypot(x - MOON.cx, y - MOON.cy) < MOON.R * 1.15;
+  if (!onMoon && onBouquet(cx, cy, fingerCells)) {
     const busy = push && time < push.start + PUSH_DUR + 0.15;
     if (!busy && !reduceMotion) push = { start: time, dir: x > CX ? -1 : 1 };
   } else {
