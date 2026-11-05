@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ASCII Lily Bouquet</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; touch-action: none; }
+  #msg {
+    position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + max(36px, 5.5vh));
+    padding: 0 max(24px, env(safe-area-inset-left, 0px)) 0 max(24px, env(safe-area-inset-right, 0px));
+    text-align: center; color: #f4ecd8; pointer-events: none;
+    font: italic 400 clamp(17px, 3vw, 28px)/1.35 Georgia, "Times New Roman", serif;
+    opacity: 0; transition: opacity 2.2s ease; text-shadow: 0 0 18px rgba(255,220,200,.25);
+  }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + max(12px, 2vh)); text-align: center; pointer-events: none;
+    color: #8a8a8a; font: 11px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .25em;
+    opacity: 0; transition: opacity 1.5s ease;
+  }
+  #start {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #e9e2d2; font: 12px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .35em;
+    text-transform: lowercase; pointer-events: none; transition: opacity .8s ease;
+  }
+  #start span { animation: pulse 2.4s ease-in-out infinite; padding-left: .35em; }
+  #start.gone { opacity: 0; }
+  @keyframes pulse { 0%,100% { opacity: .25; } 50% { opacity: .85; } }
+  #sound {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 14px); right: calc(env(safe-area-inset-right, 0px) + 14px);
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(255,255,255,.18);
+    background: rgba(0,0,0,.35); color: #ddd; font: 16px/36px Georgia, serif; text-align: center;
+    cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 1s ease; padding: 0;
+  }
+  #sound.show { opacity: .6; pointer-events: auto; }
+  #sound.muted { text-decoration: line-through; opacity: .35; }
+  #msg.show { opacity: 1; }
+  #hint.show { opacity: .55; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="start"><span></span></div>
+<div id="msg"></div>
+<button id="sound" aria-label="Mute music">&#9835;</button>
+<div id="hint">touch the flowers &middot; hold to replay</div>
+<script>
+/* ============================================================
+   CONFIG: tweak these
+   ============================================================ */
+const CONFIG = {
+  speed: 1,          // 1 = normal, 0.7 = slower, 1.4 = faster
+  message: "",       // e.g. "I couldn't bring you flowers, so I made you some."
+  rowsTarget: 150,   // text rows across the bouquet's height (higher = finer ASCII)
+  stars: 170,        // twinkling dots in the background
+  sway: 1,           // 0 = still, 1 = gentle sway
+  seed: 7,           // change for a different stem/leaf arrangement
+  startText: "tap to bloom",  // shown on the black screen before the animation starts
+  song: "song.mp3",           // audio file that plays when they tap to bloom ("" = no music)
+  songStart: 0,               // start the song this many seconds in
+  songVolume: 0.85,
+  songLoop: false,            // true = keep repeating
+  shootingStars: true,        // streaks across the sky once the bouquet has bloomed
+  shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
+  pushStrength: 1,            // how far the bouquet leans away when touched
+  holdSeconds: 3,             // press and hold this long anywhere to replay
+};
+
+/* Characters ordered from light to dense */
+const RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+
+/* Lily colour palettes */
+const PAL = {
+  red:     { petal:'#e3262c', throat:'#ffa040', tip:'#c4121c', edge:'#6e080e', vein:'#98101a', spot:'#4a0306' },
+  pink:    { petal:'#e052c4', throat:'#ffd2f0', tip:'#c43aa8', edge:'#701660', vein:'#ff9fe8', spot:'#6a0c55' },
+  cream:   { petal:'#efe5d9', throat:'#f6e8a6', tip:'#e3d2c8', edge:'#948580', vein:'#c8a7a2', spot:null },
+  peach:   { petal:'#e6ae86', throat:'#f8e2b6', tip:'#d8986c', edge:'#82533a', vein:'#c07850', spot:'#70341a' },
+  yellow:  { petal:'#f2cf2c', throat:'#fff3a2', tip:'#e2b012', edge:'#806206', vein:'#c89810', spot:'#985810' },
+  magenta: { petal:'#c8389c', throat:'#f29ad6', tip:'#a62a82', edge:'#520e42', vein:'#e070c0', spot:'#420836' },
+  wine:    { petal:'#b0161f', throat:'#e85a3a', tip:'#8c0e16', edge:'#440408', vein:'#6c0a10', spot:'#2c0204' },
+  mauve:   { petal:'#c98f8a', throat:'#eccaa8', tip:'#b07a78', edge:'#664240', vein:'#a06a66', spot:null },
+};
+
+/* Bouquet layout, listed back to front.
+   x: -0.5..0.5 (centre 0), y: 0 = top, 1 = base of stems. r = petal length. rot = degrees. */
+const FLOWERS = [
+  { x: 0.10, y: 0.04, r: 0.075, rot: -20, p: 'wine',    shade: .70 },
+  { x: 0.01, y: 0.08, r: 0.11,  rot:   8, p: 'mauve',   shade: .78 },
+  { x:-0.18, y: 0.17, r: 0.12,  rot: -10, p: 'cream',   shade: .80 },
+  { x: 0.19, y: 0.16, r: 0.12,  rot:  15, p: 'yellow',  shade: .82 },
+  { x: 0.25, y: 0.40, r: 0.13,  rot:   5, p: 'magenta', shade: .85 },
+  { x:-0.25, y: 0.39, r: 0.13,  rot: -25, p: 'yellow',  shade: .92 },
+  { x:-0.27, y: 0.68, r: 0.12,  rot:  20, p: 'yellow',  shade: .92 },
+  { x: 0.25, y: 0.71, r: 0.11,  rot: -12, p: 'wine',    shade: .95 },
+  { x: 0.14, y: 0.50, r: 0.18,  rot:  12, p: 'cream',   shade: 1 },
+  { x:-0.14, y: 0.46, r: 0.17,  rot:  -8, p: 'pink',    shade: 1 },
+  { x:-0.03, y: 0.27, r: 0.20,  rot:   3, p: 'red',     shade: 1 },
+  { x:-0.02, y: 0.66, r: 0.17,  rot:  28, p: 'peach',   shade: 1 },
+];
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (T, start, dur) => clamp((T - start) / dur);
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+const easeOutBack = t => { const c1 = 1.2, c3 = c1 + 1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); };
+function lerpAngle(a, b, t){ let d = (b - a) % (Math.PI*2); if (d > Math.PI) d -= Math.PI*2; if (d < -Math.PI) d += Math.PI*2; return a + d*t; }
+function hex(h){ const n = parseInt(h.slice(1), 16); return [n>>16 & 255, n>>8 & 255, n & 255]; }
+function mix(a, b, t){ return [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]; }
+function rgb(c, k=1, alpha=1){ return `rgba(${c[0]*k|0},${c[1]*k|0},${c[2]*k|0},${alpha})`; }
+
+/* ============================================================
+   Build the bouquet (stems, leaves, timing)
+   ============================================================ */
+const rng = mulberry32(CONFIG.seed);
+const GREEN = hex('#4a7a2e');
+
+FLOWERS.forEach((f) => {
+  const pal = PAL[f.p];
+  f.rotR = f.rot * Math.PI / 180;
+  f.r *= 1.12;
+  f.bx = f.x * 0.10 + (rng() - .5) * 0.035;
+  f.len = Math.hypot(f.x - f.bx, 1 - f.y);
+  f.stemStart = 0.05 + rng() * 0.35;
+  f.stemDur = 0.8 + f.len * 1.0;
+  f.budStart = f.stemStart + f.stemDur - 0.3;
+  f.bloomStart = Math.max(f.budStart + 0.55, 2.3 + rng() * 0.9);
+  f.bloomDur = 1.3 + rng() * 0.35;
+  f.phase = rng() * Math.PI * 2;
+  f.spotSeed = (rng() * 1e9) | 0;
+  f.curlSign = [0,1,2,3,4,5].map(() => rng() < .5 ? -1 : 1);
+  // colours: full bloom vs closed bud
+  f.c = {};
+  f.b = {};
+  for (const k of ['petal','throat','tip','edge','vein']) f.c[k] = hex(pal[k]);
+  f.c.spot = pal.spot ? hex(pal.spot) : null;
+  f.b.petal  = mix(f.c.petal, GREEN, .35).map(v => v * .7);
+  f.b.throat = hex('#5f9a38');
+  f.b.tip    = f.c.tip.map(v => v * .65);
+  f.b.edge   = f.c.edge.map(v => v * .6);
+  f.b.vein   = mix(f.c.vein, GREEN, .5).map(v => v * .6);
+  // leaves along the stem
+  f.leaves = [];
+  const n = 1 + (rng() < .55 ? 1 : 0);
+  for (let i = 0; i < n; i++) {
+    f.leaves.push({
+      t: 0.28 + rng() * 0.38,
+      side: (i % 2 ? 1 : -1) * (f.x < 0 ? -1 : 1),
+      off: 0.45 + rng() * 0.45,
+      L: 0.07 + rng() * 0.07,
+      W: 0.012 + rng() * 0.008,
+    });
+  }
+});
+
+/* Fan of leaves at the base of the bouquet */
+const BASE_LEAVES = [];
+for (let i = 0; i < 11; i++) {
+  const side = i % 2 ? 1 : -1;
+  const deg = side > 0 ? -(8 + rng() * 60) : -(172 - rng() * 60);
+  BASE_LEAVES.push({
+    x: (rng() - .5) * 0.06, y: 0.92 + rng() * 0.05,
+    a: deg * Math.PI / 180,
+    L: 0.11 + rng() * 0.13, W: 0.016 + rng() * 0.012,
+    start: 0.5 + rng() * 0.7, dur: 1.0 + rng() * 0.4,
+  });
+}
+
+const BLOOM_END = Math.max(...FLOWERS.map(f => f.bloomStart + f.bloomDur));
+
+/* ============================================================
+   Canvas setup: scene canvas (1 pixel = 1 character cell) + glyph atlas
+   ============================================================ */
+const canvas = document.getElementById('c');
+const mctx = canvas.getContext('2d');
+const scene = document.createElement('canvas');
+const sctx = scene.getContext('2d', { willReadFrequently: true });
+const tint = document.createElement('canvas');
+const mask = document.createElement('canvas');      // where the bouquet is (1 px per cell)
+const mkctx = mask.getContext('2d');
+const sky = document.createElement('canvas');       // stars + shooting stars, full resolution
+const kctx = sky.getContext('2d');
+let maskImg = null;
+const tctx = tint.getContext('2d');
+
+let quality = 1, FONT = '', xScale = 1, rowChars = [];
+let W, H, dpr, gw, gh, cellW, cellH, cols, rows, S, CX, TOP, jitter, stars = [];
+
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = document.documentElement.clientWidth || window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+
+  // bouquet size & placement (the bouquet is ~0.9*S wide, ~1.05*S tall)
+  const reserve = CONFIG.message ? Math.min(130, Math.max(70, H * 0.13)) : Math.max(34, Math.min(50, H * 0.06));
+  const availH = H - reserve - Math.min(40, H * 0.05);
+  S = Math.min(availH * 0.9, W * 1.02);
+  CX = W / 2;
+  TOP = Math.min(40, H * 0.05) + (availH - S) / 2 + S * 0.05;
+
+  // character grid scales with the bouquet, so phones get the same fine texture as desktop
+  gh = Math.max(7, Math.round(S * dpr / (CONFIG.rowsTarget * quality)));
+  gw = Math.max(3, Math.round(gh * 0.6));
+  cellH = gh / dpr; cellW = gw / dpr;
+  cols = Math.ceil(canvas.width / gw); rows = Math.ceil(canvas.height / gh);
+  scene.width = cols; scene.height = rows;
+  tint.width = cols; tint.height = rows;
+  mask.width = cols; mask.height = rows;
+  maskImg = mkctx.createImageData(cols, rows);
+  sky.width = canvas.width; sky.height = canvas.height;
+
+  // each row is drawn as one string; stretch the font so every character is exactly one cell wide
+  FONT = `bold ${gh * 1.02}px Menlo, Consolas, "DejaVu Sans Mono", "Courier New", monospace`;
+  mctx.font = FONT;
+  xScale = gw / (mctx.measureText('MMMMMMMMMM').width / 10);
+  rowChars = new Array(cols);
+
+  // static per-cell jitter so the texture looks hand-typed, not banded
+  const jr = mulberry32(99);
+  jitter = new Int8Array(cols * rows);
+  for (let i = 0; i < jitter.length; i++) jitter[i] = Math.floor(jr() * 5) - 2;
+
+
+  const sr = mulberry32(5);
+  stars = [];
+  for (let i = 0; i < CONFIG.stars; i++) {
+    stars.push({ x: sr() * W, y: sr() * H, ph: sr() * 6.28, sp: 0.6 + sr() * 1.8, d: sr() * 1.6 });
+  }
+}
+let resizeTimer = 0;
+function scheduleResize(){ clearTimeout(resizeTimer); resizeTimer = setTimeout(resize, 120); }
+window.addEventListener('resize', scheduleResize);
+window.addEventListener('orientationchange', scheduleResize);
+resize();
+
+/* ============================================================
+   Geometry
+   ============================================================ */
+/* Touch push: lean away from the finger, spring back past centre a little, settle.
+   While a push is playing, new touches on the bouquet are ignored, so taps can't pile up. */
+let push = null;                       // { start, dir }
+const PUSH_DUR = 2.0;
+function pushCurve(k){ return (k <= 0 || k >= 1) ? 0 : Math.exp(-3.2 * k) * Math.sin(2.6 * Math.PI * k) * (1 - k); }
+function pushAmount(time, delay = 0){ return push ? push.dir * pushCurve((time - push.start - delay) / PUSH_DUR) : 0; }
+
+function sway(f, time){
+  const k = CONFIG.sway * (1 - f.y * 0.6);
+  const lag = 0.12 * (1 - f.y);         // tops of the stems follow a moment later, like a whip
+  const p = pushAmount(time, lag) * 0.03 * CONFIG.pushStrength * (1 - f.y * 0.7);
+  return [Math.sin(time * 1.1 + f.phase) * 0.005 * k + p, Math.cos(time * 0.9 + f.phase) * 0.002 * k];
+}
+function stemPt(f, t, sx, sy){
+  const p0x = f.bx, p0y = 1.0;
+  const p1x = f.bx * 0.6, p1y = 0.9;
+  const p3x = f.x + sx, p3y = f.y + sy;
+  const p2x = f.x * 0.55, p2y = lerp(0.84, f.y, 0.45);
+  const u = 1 - t;
+  return [
+    u*u*u*p0x + 3*u*u*t*p1x + 3*u*t*t*p2x + t*t*t*p3x,
+    u*u*u*p0y + 3*u*u*t*p1y + 3*u*t*t*p2y + t*t*t*p3y,
+  ];
+}
+function stemAngle(f, t, sx, sy){
+  const a = stemPt(f, Math.max(0, t - 0.02), sx, sy), b = stemPt(f, Math.min(1, t + 0.02), sx, sy);
+  return Math.atan2(b[1] - a[1], b[0] - a[0]);
+}
+
+function drawLeaf(ctx, x, y, a, L, W, px){
+  if (L <= 0) return;
+  const droop = L * 0.28 * (Math.cos(a) >= 0 ? 1 : -1);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+  const g = ctx.createLinearGradient(0, 0, L, 0);
+  g.addColorStop(0, '#2c7a2a'); g.addColorStop(0.5, '#56b843'); g.addColorStop(1, '#8edc66');
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(L*0.3, -W*1.1, L*0.7, -W*0.8 + droop*0.5, L, droop);
+  ctx.bezierCurveTo(L*0.7, W*0.6 + droop*0.5, L*0.3, W*0.9, 0, 0);
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = px * 0.8; ctx.strokeStyle = '#1d551c'; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(L*0.05, 0); ctx.quadraticCurveTo(L*0.6, droop*0.3, L*0.95, droop*0.95);
+  ctx.strokeStyle = '#b4ee88'; ctx.lineWidth = px * 0.7; ctx.stroke();
+  ctx.restore();
+}
+
+function drawPetal(ctx, L, W, curl, c, open, px, spotRng, spotted){
+  const g = ctx.createLinearGradient(0, 0, L, 0);
+  g.addColorStop(0, c.throat); g.addColorStop(0.32, c.petal); g.addColorStop(0.85, c.petal); g.addColorStop(1, c.tip);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(L*0.22, -W*1.05, L*0.66, -W*0.78 + curl*0.4, L, curl);
+  ctx.bezierCurveTo(L*0.66, W*0.78 + curl*0.4, L*0.22, W*1.05, 0, 0);
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = px * 0.9; ctx.strokeStyle = c.edge; ctx.stroke();
+  // mid-rib
+  ctx.beginPath(); ctx.moveTo(L*0.08, 0); ctx.quadraticCurveTo(L*0.6, curl*0.35, L*0.93, curl*0.92);
+  ctx.strokeStyle = c.vein; ctx.lineWidth = px * 0.9; ctx.stroke();
+  if (open > 0.35) {
+    ctx.globalAlpha = (open - 0.35) / 0.65 * 0.6;
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(L*0.14, s*W*0.12);
+      ctx.quadraticCurveTo(L*0.48, s*W*0.5 + curl*0.3, L*0.8, s*W*0.18 + curl*0.7);
+      ctx.stroke();
+    }
+    // freckles near the throat
+    if (spotted) {
+      ctx.fillStyle = c.spot;
+      for (let i = 0; i < 7; i++) {
+        const sx = L * (0.12 + spotRng() * 0.38), sy = (spotRng() - .5) * W * 0.9;
+        ctx.beginPath(); ctx.arc(sx, sy, px * (0.55 + spotRng() * 0.5), 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawFlower(ctx, f, T, time, px){
+  const budT = easeOut(prog(T, f.budStart, 0.7));
+  if (budT <= 0) return;
+  const bl = prog(T, f.bloomStart, f.bloomDur);
+  const ob = easeOutBack(bl);           // petal spread (slight overshoot)
+  const oc = easeInOut(bl);             // colour/size
+  const [sx, sy] = sway(f, time);
+  const [fx, fy] = stemPt(f, 1, sx, sy);
+  const up = stemAngle(f, 0.98, sx, sy);
+  const k = f.shade;
+  const c = {};
+  for (const key of ['petal','throat','tip','edge','vein']) c[key] = rgb(mix(f.b[key], f.c[key], oc), k);
+  c.spot = f.c.spot ? rgb(f.c.spot, k) : null;
+  const spotRng = mulberry32(f.spotSeed);
+
+  ctx.save(); ctx.translate(fx, fy);
+  // outer petals (sepals) first, then the wider inner petals on top
+  for (const pass of [[0,2,4],[1,3,5]]) {
+    for (const i of pass) {
+      const outer = i % 2 === 0;
+      const fin = -Math.PI/2 + f.rotR + i * Math.PI/3;
+      const bud = up + (i - 2.5) * 0.05;
+      const a = lerpAngle(bud, fin, ob);
+      const L = f.r * (outer ? 1 : 0.93) * lerp(0.42, 1, oc) * budT;
+      const Wd = f.r * (outer ? 0.23 : 0.30) * lerp(0.72, 1, oc) * budT;
+      const curl = f.r * 0.07 * f.curlSign[i] * oc;
+      ctx.save(); ctx.rotate(a);
+      drawPetal(ctx, L, Wd, curl, c, oc, px, spotRng, !!c.spot && bl > 0.4);
+      ctx.restore();
+    }
+  }
+  // throat glow
+  if (bl > 0.25) {
+    const a = (bl - 0.25) / 0.75;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, f.r * 0.16);
+    g.addColorStop(0, rgb(hex('#e8f0a0'), k, a)); g.addColorStop(1, rgb(f.c.throat, k, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, f.r * 0.16, 0, 6.283); ctx.fill();
+  }
+  // stamens + anthers
+  if (bl > 0.45) {
+    const s = easeOut((bl - 0.45) / 0.55);
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI/2 + f.rotR + i * Math.PI/3 + Math.PI/6 + (i%2 ? .12 : -.08);
+      const len = f.r * (0.5 + (i % 3) * 0.06) * s;
+      const tx = Math.cos(a) * len, ty = Math.sin(a) * len;
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(tx * 0.5 - ty * 0.15, ty * 0.5 + tx * 0.15, tx, ty);
+      ctx.strokeStyle = rgb(hex('#e2ecb0'), k); ctx.lineWidth = px * 0.6; ctx.stroke();
+      ctx.fillStyle = rgb(hex('#b5521c'), k);
+      ctx.beginPath(); ctx.ellipse(tx, ty, px * 1.3, px * 0.8, a + Math.PI/2, 0, 6.283); ctx.fill();
+    }
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(f.rotR - 1.2) * f.r * 0.62 * s, Math.sin(f.rotR - 1.2) * f.r * 0.62 * s);
+    ctx.strokeStyle = rgb(hex('#d6e890'), k); ctx.lineWidth = px * 0.7; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ============================================================
+   Render loop
+   ============================================================ */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let started = false, t0 = 0;
+const startEl = document.getElementById('start');
+startEl.firstElementChild.textContent = CONFIG.startText;
+const msgEl = document.getElementById('msg');
+const hintEl = document.getElementById('hint');
+msgEl.textContent = CONFIG.message;
+
+function drawScene(T, time){
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, cols, rows);
+  // bouquet units -> scene cells (x and y scale differ because cells aren't square)
+  sctx.setTransform(S / cellW, 0, 0, S / cellH, CX / cellW, TOP / cellH);
+  const sw = (reduceMotion ? 0 : CONFIG.sway * 0.012 * Math.sin(time * 0.7) * prog(T, 1, 2))
+           + pushAmount(time) * 0.12 * CONFIG.pushStrength;
+  sctx.translate(0, 1); sctx.rotate(sw); sctx.translate(0, -1);
+  const px = cellH / S;   // one character cell, in bouquet units
+  sctx.lineCap = 'round'; sctx.lineJoin = 'round';
+
+  // base leaves (behind stems)
+  for (const l of BASE_LEAVES) {
+    const g = easeOut(prog(T, l.start, l.dur));
+    if (g > 0) drawLeaf(sctx, l.x, l.y, l.a + (1 - g) * (l.a < -Math.PI/2 ? 0.5 : -0.5), l.L * g, l.W * (0.4 + 0.6*g), px);
+  }
+
+  // stems
+  for (const f of FLOWERS) {
+    const g = easeOut(prog(T, f.stemStart, f.stemDur));
+    if (g <= 0) continue;
+    const [sx, sy] = sway(f, time);
+    const N = 36, steps = Math.max(2, Math.ceil(N * g));
+    sctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const p = stemPt(f, (i / steps) * g, sx, sy);
+      i ? sctx.lineTo(p[0], p[1]) : sctx.moveTo(p[0], p[1]);
+    }
+    sctx.strokeStyle = rgb(hex('#2f8a30'), f.shade); sctx.lineWidth = px * 1.5; sctx.stroke();
+    sctx.strokeStyle = rgb(hex('#7fd45a'), f.shade); sctx.lineWidth = px * 0.6; sctx.stroke();
+    // stem leaves unfurl once the stem has grown past them
+    for (const l of f.leaves) {
+      const lt = easeOut(clamp((g - l.t) / 0.3));
+      if (lt <= 0) continue;
+      const p = stemPt(f, l.t, sx * l.t, sy * l.t);
+      const a = stemAngle(f, l.t, sx, sy) + l.side * l.off * lt;
+      drawLeaf(sctx, p[0], p[1], a, l.L * lt, l.W * lt, px);
+    }
+  }
+
+  // buds and blooms, back to front
+  for (const f of FLOWERS) drawFlower(sctx, f, T, time, px);
+}
+
+function asciiPass(){
+  const img = sctx.getImageData(0, 0, cols, rows);
+  const data = img.data;
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  mctx.globalCompositeOperation = 'source-over';
+  mctx.clearRect(0, 0, canvas.width, canvas.height);
+  const n = RAMP.length - 1;
+  const md = maskImg.data; md.fill(0);
+  for (let j = 3; j < data.length; j += 4) if (data[j] > 8) md[j] = 255;
+  mkctx.putImageData(maskImg, 0, 0);
+  mctx.font = FONT; mctx.fillStyle = '#fff';
+  mctx.textAlign = 'left'; mctx.textBaseline = 'middle';
+  for (let y = 0; y < rows; y++) {
+    let first = cols, last = -1;
+    for (let x = 0; x < cols; x++) {
+      rowChars[x] = ' ';
+      const i = (y * cols + x), j = i * 4;
+      const a = data[j + 3];
+      if (a < 12) { data[j + 3] = 0; continue; }
+      const r = data[j], g = data[j + 1], b = data[j + 2];
+      let l = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      l = Math.max(l, Math.max(r, g, b) / 255 * 0.72) * (a / 255);
+      if (l < 0.05) { data[j + 3] = 0; continue; }
+      // brighten + saturate the colour this glyph will take
+      const m = (r + g + b) / 3;
+      data[j]     = Math.min(255, (m + (r - m) * 1.2) * 1.5);
+      data[j + 1] = Math.min(255, (m + (g - m) * 1.2) * 1.5);
+      data[j + 2] = Math.min(255, (m + (b - m) * 1.2) * 1.5);
+      let idx = Math.round((0.38 + 0.62 * Math.pow(l, 0.7)) * n) + jitter[i];
+      idx = idx < 1 ? 1 : idx > n ? n : idx;
+      rowChars[x] = RAMP[idx];
+      if (x < first) first = x;
+      last = x;
+    }
+    if (last >= 0) {
+      mctx.setTransform(xScale, 0, 0, 1, first * gw, y * gh + gh * 0.55);
+      mctx.fillText(rowChars.slice(first, last + 1).join(''), 0, 0);
+    }
+  }
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  // colour the white glyphs with the scene colours
+  mctx.globalCompositeOperation = 'source-in';
+  mctx.imageSmoothingEnabled = false;
+  tctx.putImageData(img, 0, 0);
+  mctx.drawImage(tint, 0, 0, cols * gw, rows * gh);
+  mctx.globalCompositeOperation = 'source-over';
+}
+
+/* Shooting stars: a bright head with a fading tail, drawn behind the bouquet */
+let shooters = [], nextShooter = 0;
+function spawnShooter(time, ox, oy){
+  if (shooters.length > 8) return;
+  const fromLeft = ox == null ? Math.random() < 0.5 : ox < CX;   // auto ones pick a random side
+  if (ox != null) {
+    const ang = 0.2 + Math.random() * 0.45, big = Math.max(W, H);
+    const away = ox < W / 2 ? 1 : -1;            // head across the open side of the screen
+    shooters.push({
+      x: ox, y: oy, dx: away * Math.cos(ang), dy: Math.sin(ang),
+      speed: big * (0.75 + Math.random() * 0.4),
+      tail: Math.min(300, Math.max(150, big * (0.15 + Math.random() * 0.1))),
+      born: time, life: 0.9 + Math.random() * 0.5,
+    });
+    return;
+  }
+  const ang = (fromLeft ? 1 : -1) * (0.25 + Math.random() * 0.35);    // radians below horizontal
+  const dirX = fromLeft ? Math.cos(ang) : -Math.cos(Math.abs(ang));
+  const dirY = Math.sin(Math.abs(ang));
+  const big = Math.max(W, H);
+  shooters.push({
+    x: fromLeft ? Math.random() * W * 0.6 : W * 0.4 + Math.random() * W * 0.6,
+    y: Math.random() * H * 0.45,
+    dx: dirX, dy: dirY,
+    speed: big * (0.7 + Math.random() * 0.5),     // px per second
+    tail: Math.min(300, Math.max(150, big * (0.15 + Math.random() * 0.1))),
+    born: time, life: 0.8 + Math.random() * 0.6,
+  });
+}
+function drawShooters(T, time){
+  if (reduceMotion) return;
+  if (CONFIG.shootingStars && T > BLOOM_END - 0.5) {
+    if (!nextShooter) nextShooter = time + 0.8;
+    if (time >= nextShooter) {
+      spawnShooter(time);
+      const [a, b] = CONFIG.shootingEvery;
+      nextShooter = time + a + Math.random() * (b - a);
+    }
+  }
+  shooters = shooters.filter(s => time - s.born < s.life);
+  for (const s of shooters) {
+    const age = time - s.born, k = age / s.life;
+    const fade = Math.sin(Math.PI * Math.min(1, k * 1.15));   // fade in, then burn out
+    const hx = (s.x + s.dx * s.speed * age) * dpr, hy = (s.y + s.dy * s.speed * age) * dpr;
+    const len = s.tail * dpr * (0.4 + 0.6 * Math.min(1, k * 3));
+    const tx = hx - s.dx * len, ty = hy - s.dy * len;
+    const pad = 8 * dpr;
+    const bx = Math.max(0, Math.floor(Math.min(hx, tx) - pad)), by = Math.max(0, Math.floor(Math.min(hy, ty) - pad));
+    const bw = Math.min(sky.width, Math.ceil(Math.max(hx, tx) + pad)) - bx, bh = Math.min(sky.height, Math.ceil(Math.max(hy, ty) + pad)) - by;
+    if (bw <= 0 || bh <= 0) continue;
+    kctx.globalCompositeOperation = 'source-over';
+    kctx.clearRect(bx, by, bw, bh);
+    const g = kctx.createLinearGradient(tx, ty, hx, hy);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.7, `rgba(200,220,255,${(0.35 * fade).toFixed(3)})`);
+    g.addColorStop(1, `rgba(255,255,255,${(0.95 * fade).toFixed(3)})`);
+    kctx.lineCap = 'round';
+    kctx.strokeStyle = g; kctx.lineWidth = 1.6 * dpr;
+    kctx.beginPath(); kctx.moveTo(tx, ty); kctx.lineTo(hx, hy); kctx.stroke();
+    const glow = kctx.createRadialGradient(hx, hy, 0, hx, hy, 5 * dpr);
+    glow.addColorStop(0, `rgba(255,255,255,${(0.9 * fade).toFixed(3)})`);
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    kctx.fillStyle = glow;
+    kctx.beginPath(); kctx.arc(hx, hy, 5 * dpr, 0, 6.283); kctx.fill();
+    // erase wherever the bouquet is, so the streak passes *behind* the flowers
+    kctx.save();
+    kctx.beginPath(); kctx.rect(bx, by, bw, bh); kctx.clip();
+    kctx.globalCompositeOperation = 'destination-out';
+    kctx.imageSmoothingEnabled = true;
+    kctx.drawImage(mask, 0, 0, cols * gw, rows * gh);
+    kctx.drawImage(mask, -gw * 0.5, -gh * 0.5, cols * gw + gw, rows * gh + gh);
+    kctx.restore();
+    mctx.globalCompositeOperation = 'destination-over';
+    mctx.drawImage(sky, bx, by, bw, bh, bx, by, bw, bh);
+    mctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+function drawStars(T, time){
+  const fade = prog(T, BLOOM_END - 1.6, 1.8);
+  if (fade <= 0) return;
+  const s = Math.max(1, Math.round(dpr * 1.4));
+  for (const st of stars) {
+    if (T < BLOOM_END - 1.6 + st.d) continue;
+    const cx = Math.floor(st.x * dpr / gw), cy = Math.floor(st.y * dpr / gh);
+    if (onBouquet(cx, cy)) continue;
+    const tw = 0.5 + 0.5 * Math.sin(time * st.sp + st.ph);
+    const a = fade * (0.15 + 0.85 * tw * tw * tw);
+    mctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+    mctx.fillRect(Math.round(st.x * dpr), Math.round(st.y * dpr), s, s);
+  }
+}
+
+/* Sky: stars and shooting stars sit *behind* the bouquet. ASCII has gaps between letters,
+   so anything under the flowers is cut out, otherwise stars would peek through. */
+function onBouquet(cx, cy, rad = 1){
+  const md = maskImg.data;
+  for (let y = cy - rad; y <= cy + rad; y++) for (let x = cx - rad; x <= cx + rad; x++) {
+    if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+    if (md[(y * cols + x) * 4 + 3]) return true;
+  }
+  return false;
+}
+function drawSky(T, time){
+  mctx.globalCompositeOperation = 'destination-over';
+  drawStars(T, time);
+  mctx.globalCompositeOperation = 'source-over';
+  drawShooters(T, time);
+}
+
+let perfFrames = 0, perfTime = 0, lastNow = 0, downgrades = 0;
+function adapt(now){
+  if (lastNow && document.visibilityState === 'visible') {
+    const dt = now - lastNow;
+    if (dt < 250) { perfFrames++; perfTime += dt; }
+    if (perfFrames >= 20) {
+      const avg = perfTime / perfFrames;
+      if (avg > 26 && downgrades < 4 && quality > 0.45) {
+        quality = Math.max(0.45, quality * (avg > 50 ? 0.65 : 0.82)); downgrades++; resize();
+      }
+      perfFrames = 0; perfTime = 0;
+    }
+  }
+  lastNow = now;
+}
+function frame(now){
+  adapt(now);
+  const T = (now - t0) / 1000 * CONFIG.speed;
+  const time = now / 1000;
+  if (!started) {
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.clearRect(0, 0, canvas.width, canvas.height);
+    requestAnimationFrame(frame);
+    return;
+  }
+  drawScene(T, time);
+  asciiPass();
+  // sky goes *behind* the flowers
+  drawSky(T, time);
+  drawHoldRing(now);
+  if (T > BLOOM_END + 0.3) {
+    if (CONFIG.message) msgEl.classList.add('show');
+    hintEl.classList.add('show');
+  }
+  requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange', () => { lastNow = 0; });
+requestAnimationFrame(frame);
+
+/* Music: starts on the same tap that starts the bloom (phones only allow audio after a tap) */
+const soundBtn = document.getElementById('sound');
+let audio = null, fadeTimer = 0;
+if (CONFIG.song) {
+  audio = new Audio(CONFIG.song);
+  audio.preload = 'auto';
+  audio.loop = CONFIG.songLoop;
+  audio.setAttribute('playsinline', '');
+  audio.addEventListener('error', () => { audio = null; soundBtn.classList.remove('show'); });
+}
+function playSong(){
+  if (!audio) return;
+  try { audio.currentTime = CONFIG.songStart || 0; } catch (_) {}
+  audio.volume = 0;
+  const p = audio.play();
+  if (p && p.catch) p.catch(() => {});
+  soundBtn.classList.add('show');
+  clearInterval(fadeTimer);
+  const t = performance.now();
+  fadeTimer = setInterval(() => {                       // gentle 2s fade-in
+    const k = Math.min(1, (performance.now() - t) / 2000);
+    try { audio.volume = CONFIG.songVolume * k; } catch (_) {}
+    if (k >= 1) clearInterval(fadeTimer);
+  }, 50);
+}
+soundBtn.addEventListener('pointerup', (e) => {
+  e.stopPropagation();
+  if (!audio) return;
+  audio.muted = !audio.muted;
+  soundBtn.classList.toggle('muted', audio.muted);
+  soundBtn.setAttribute('aria-label', audio.muted ? 'Unmute music' : 'Mute music');
+});
+document.addEventListener('visibilitychange', () => {   // pause when they leave the tab
+  if (!audio || !started) return;
+  if (document.hidden) audio.pause(); else if (!audio.ended || audio.loop) audio.play().catch(() => {});
+});
+
+function begin(e){
+  if (e && e.cancelable) e.preventDefault();
+  if (!started) { started = true; startEl.classList.add('gone'); }
+  t0 = performance.now() - (reduceMotion ? 60000 : 0);
+  shooters = []; nextShooter = 0; push = null;
+  playSong();
+  msgEl.classList.remove('show'); hintEl.classList.remove('show');
+}
+/* ---------- Touch / mouse ----------
+   first tap: start  |  tap flowers: push  |  tap sky: shooting star  |  hold: replay */
+let hold = null, burst = null;
+const TAP_MAX_MS = 450;
+
+function tapAt(x, y){
+  const time = performance.now() / 1000;
+  const cx = Math.floor(x * dpr / gw), cy = Math.floor(y * dpr / gh);
+  const fingerCells = Math.max(1, Math.round(10 * dpr / gh));     // ~10px of slack around a fingertip
+  if (onBouquet(cx, cy, fingerCells)) {
+    const busy = push && time < push.start + PUSH_DUR + 0.15;
+    if (!busy && !reduceMotion) push = { start: time, dir: x > CX ? -1 : 1 };
+  } else {
+    spawnShooter(time, x, y);
+  }
+}
+
+function drawHoldRing(now){
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (hold && !hold.done) {
+    const el = (now - hold.t) / 1000;
+    if (el > 0.35) {
+      const k = Math.min(1, (el - 0.35) / (CONFIG.holdSeconds - 0.35));
+      const x = hold.x * dpr, y = hold.y * dpr, rad = 30 * dpr;
+      mctx.lineCap = 'round';
+      mctx.lineWidth = 2.5 * dpr;
+      mctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      mctx.beginPath(); mctx.arc(x, y, rad, 0, Math.PI * 2); mctx.stroke();
+      mctx.strokeStyle = 'rgba(255,240,235,0.9)';
+      mctx.beginPath(); mctx.arc(x, y, rad, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); mctx.stroke();
+    }
+    if (el >= CONFIG.holdSeconds) { hold.done = true; burst = { x: hold.x, y: hold.y, t: now }; begin(); }
+  }
+  if (burst) {
+    const k = (now - burst.t) / 600;
+    if (k >= 1) { burst = null; return; }
+    mctx.lineWidth = 2 * dpr;
+    mctx.strokeStyle = `rgba(255,240,235,${(1 - k).toFixed(3)})`;
+    mctx.beginPath(); mctx.arc(burst.x * dpr, burst.y * dpr, (30 + 40 * k) * dpr, 0, Math.PI * 2); mctx.stroke();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!started) return;
+  hold = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, done: false };
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!hold || e.pointerId !== hold.id) return;
+  if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 24) hold.moved = true;
+  hold.x = e.clientX; hold.y = e.clientY;        // ring follows the finger
+});
+canvas.addEventListener('pointerup', (e) => {
+  if (!started) { begin(e); return; }
+  if (!hold || e.pointerId !== hold.id) return;
+  const h = hold; hold = null;
+  if (h.done) return;
+  if (performance.now() - h.t < TAP_MAX_MS && !h.moved) tapAt(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointercancel', () => { hold = null; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());   // no long-press menu
+window.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') begin(e); });
+</script>
+</body>
+</html>
