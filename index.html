@@ -51,7 +51,7 @@
 <div id="start"><span></span></div>
 <div id="msg"></div>
 <button id="sound" aria-label="Mute music">&#9835;</button>
-<div id="hint">touch the flowers &middot; hold to replay</div>
+<div id="hint">touch the flowers &middot; hold the moon</div>
 <script>
 /* ============================================================
    CONFIG: tweak these
@@ -67,13 +67,14 @@ const CONFIG = {
   song: "song.mp3",           // audio file that plays when they tap to bloom ("" = no music)
   songStart: 0,               // start the song this many seconds in
   songVolume: 0.85,
-  songLoop: false,            // true = keep repeating
+  songLoop: true,             // true = keep repeating
   shootingStars: true,        // streaks across the sky once the bouquet has bloomed
   shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
   pushStrength: 1,            // how far the bouquet leans away when touched
   holdSeconds: 3,
   moon: true,                 // ASCII moon in the top-left corner
-  moonSize: 0.11,             // radius as a fraction of the smaller screen side             // press and hold this long anywhere to replay
+  moonSize: 0.11,             // radius as a fraction of the smaller screen side
+  moonlight: true,            // hold the moon: it glows, lights the flowers, and they lean toward it             // press and hold this long anywhere to replay
 };
 
 /* Characters ordered from light to dense */
@@ -514,17 +515,23 @@ const mulC = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
    Geometry
    ============================================================ */
 /* Touch push: lean away from the finger, spring back past centre a little, settle.
-   While a push is playing, new touches on the bouquet are ignored, so taps can't pile up. */
-let push = null;                       // { start, dir }
+   Taps stack: each one adds its own sway, softly limited so spamming can't over-bend it. */
+let pushes = [];                       // [{ start, dir }]
+let glow = 0;                          // 0..1 moonlight, eased toward its target each frame
 const PUSH_DUR = 2.0;
 function pushCurve(k){ return (k <= 0 || k >= 1) ? 0 : Math.exp(-3.2 * k) * Math.sin(2.6 * Math.PI * k) * (1 - k); }
-function pushAmount(time, delay = 0){ return push ? push.dir * pushCurve((time - push.start - delay) / PUSH_DUR) : 0; }
+function pushAmount(time, delay = 0){
+  let sum = 0;
+  for (const p of pushes) sum += p.dir * pushCurve((time - p.start - delay) / PUSH_DUR);
+  return Math.tanh(sum * 1.2) / 1.2;    // ~same as before for one tap, gently capped for many
+}
 
 function sway(f, time){
   const k = CONFIG.sway * (1 - f.y * 0.6);
   const lag = 0.12 * (1 - f.y);         // tops of the stems follow a moment later, like a whip
   const p = pushAmount(time, lag) * 0.03 * CONFIG.pushStrength * (1 - f.y * 0.7);
-  return [Math.sin(time * 1.1 + f.phase) * 0.005 * k + p, Math.cos(time * 0.9 + f.phase) * 0.002 * k];
+  const lean = glow * 0.014 * (1 - f.y * 0.7);       // heads tilt toward the moonlight
+  return [Math.sin(time * 1.1 + f.phase) * 0.005 * k + p - lean, Math.cos(time * 0.9 + f.phase) * 0.002 * k - lean * 0.3];
 }
 function stemPt(f, t, sx, sy){
   const p0x = f.bx, p0y = 1.0;
@@ -668,6 +675,7 @@ function drawMoon(T, time){
   const { i0, j0, w, h, cx, cy, R } = MOON;
   const spin = time * 0.025, cs = Math.cos(spin), sn = Math.sin(spin);
   const edge = R / cellW * 1.4;
+  if (glow > 0.01) drawHalo(fade);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
       const x = ((i0 + i + 0.5) * cellW - cx) / R, y = ((j0 + j + 0.5) * cellH - cy) / R;
@@ -680,12 +688,51 @@ function drawMoon(T, time){
       const crater = smooth(0.7, 0.8, noise3(sx * 11, y * 11 + 5, sz * 11));
       const albedo = 1 - 0.34 * seas - 0.16 * (detail - 0.5) - 0.22 * crater;
       const ndl = -0.62 * x - 0.34 * y + 0.71 * z;                 // light from the upper left
-      const lit = smooth(-0.1, 0.5, ndl);
-      const limb = 0.82 + 0.18 * z;
+      const lit = Math.max(smooth(-0.1, 0.5, ndl), glow * 0.55);
+      const limb = (0.82 + 0.18 * z) * (1 + 0.3 * glow);
       const a = clamp((1 - Math.sqrt(d2)) * edge) * fade;
       const k = ((j0 + j) * cols + (i0 + i)) * 4;
       for (let c = 0; c < 3; c++) buf[k + c] = lerp(MOON_DARK[c] * (0.85 + 0.15 * albedo), MOON_LIT[c] * albedo * limb, lit) * a;
       buf[k + 3] = a;
+    }
+  }
+}
+
+/* soft ring of pale-blue characters around the moon while it glows */
+function drawHalo(fade){
+  const { cx, cy, R } = MOON, HR = R * 1.75;
+  const j0 = Math.max(0, Math.floor((cy - HR) / cellH)), j1 = Math.min(rows - 1, Math.ceil((cy + HR) / cellH));
+  const i0 = Math.max(0, Math.floor((cx - HR) / cellW)), i1 = Math.min(cols - 1, Math.ceil((cx + HR) / cellW));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const d = Math.hypot((i + 0.5) * cellW - cx, (j + 0.5) * cellH - cy) / R;
+    if (d <= 0.98 || d >= 1.75) continue;
+    const t = 1 - (d - 1) / 0.75;
+    const a = glow * fade * 0.42 * t * t;
+    if (a < 0.01) continue;
+    const k = (j * cols + i) * 4, ia = 1 - a;
+    buf[k] = 205 * a + buf[k] * ia; buf[k+1] = 218 * a + buf[k+1] * ia; buf[k+2] = 255 * a + buf[k+2] * ia;
+    buf[k+3] = a + buf[k+3] * ia;
+  }
+}
+
+/* moonlight on the bouquet: a silver wash, strongest on edges that face the moon */
+function applyMoonlight(){
+  if (glow < 0.01 || !MOON) return;
+  const mx = MOON.cx / cellW, my = MOON.cy / cellH, keep = (MOON.R * 1.8);
+  const far = Math.hypot(cols, rows);
+  for (let y = 1; y < rows; y++) {
+    for (let x = 1; x < cols; x++) {
+      const k = (y * cols + x) * 4, a = buf[k + 3];
+      if (a < 0.035) continue;
+      if (Math.hypot(x * cellW - MOON.cx, y * cellH - MOON.cy) < keep) continue;   // not the moon itself
+      const near = 1 - Math.min(1, Math.hypot(x - mx, y - my) / far);
+      // is the neighbour on the moon side empty? then this cell is a lit edge
+      const up = buf[((y - 1) * cols + x) * 4 + 3], left = buf[(y * cols + x - 1) * 4 + 3], diag = buf[((y - 1) * cols + x - 1) * 4 + 3];
+      const rim = (up < 0.035 || left < 0.035 || diag < 0.035) ? 1 : 0;
+      const m = glow * (0.05 + 0.1 * near + 0.6 * rim);
+      buf[k]     += (226 * a - buf[k]) * m;
+      buf[k + 1] += (234 * a - buf[k + 1]) * m;
+      buf[k + 2] += (255 * a - buf[k + 2]) * m;
     }
   }
 }
@@ -696,7 +743,8 @@ function drawScene(T, time){
   // bouquet units -> cells (x and y scale differ because cells aren't square)
   rSet(S / cellW, 0, 0, S / cellH, CX / cellW, TOP / cellH);
   const sw = (reduceMotion ? 0 : CONFIG.sway * 0.012 * Math.sin(time * 0.7) * prog(T, 1, 2))
-           + pushAmount(time) * 0.12 * CONFIG.pushStrength;
+           + pushAmount(time) * 0.12 * CONFIG.pushStrength
+           - glow * 0.045;                                   // the whole bouquet leans toward the moon
   rTranslate(0, 1); rRotate(sw); rTranslate(0, -1);
   const px = cellH / S;   // one character cell, in bouquet units
 
@@ -722,6 +770,7 @@ function drawScene(T, time){
     }
   }
   for (const f of FLOWERS) drawFlower(f, T, time, px);   // buds and blooms, back to front
+  applyMoonlight();
 }
 
 /* turn painted colours into glyph choice + display colour, then draw */
@@ -813,7 +862,7 @@ function drawSky(T, time){
       if (T < BLOOM_END - 1.6 + st.d) continue;
       if (onBouquet(Math.floor(st.x * dpr / gw), Math.floor(st.y * dpr / gh))) continue;
       const tw = 0.5 + 0.5 * Math.sin(time * st.sp + st.ph);
-      kctx.globalAlpha = fade * (0.15 + 0.85 * tw * tw * tw);
+      kctx.globalAlpha = Math.min(1, fade * (0.15 + 0.85 * tw * tw * tw) * (1 + 0.6 * glow));
       kctx.fillRect(Math.round(st.x * dpr), Math.round(st.y * dpr), s, s);
     }
     kctx.globalAlpha = 1;
@@ -877,6 +926,10 @@ function frame(now){
   adapt(now);
   const T = (now - t0) / 1000 * CONFIG.speed;
   const time = now / 1000;
+  const holdingMoon = CONFIG.moonlight && hold && hold.moon && (now - hold.t) > 150;
+  const dtg = Math.min(0.1, (now - (frame.prev || now)) / 1000); frame.prev = now;
+  glow += ((holdingMoon ? 1 : 0) - glow) * (1 - Math.exp(-dtg * (holdingMoon ? 3.2 : 1.6)));
+  if (glow < 0.002) glow = 0;
   drawScene(T, time);
   asciiPass();
   drawSky(T, time);
@@ -884,6 +937,8 @@ function frame(now){
   if (T > BLOOM_END + 0.3) {
     if (CONFIG.message) msgEl.classList.add('show');
     hintEl.classList.add('show');
+    const which = Math.floor((T - BLOOM_END) / 5) % 2;      // alternate the two hints every 5s
+    if (which !== hintEl._w) { hintEl._w = which; hintEl.textContent = which ? 'hold anywhere to replay' : 'touch the flowers \u00b7 hold the moon'; }
   }
 }
 document.addEventListener('visibilitychange', () => { lastNow = 0; });
@@ -930,7 +985,7 @@ function begin(e){
   if (e && e.cancelable) e.preventDefault();
   if (!started) { started = true; startEl.classList.add('gone'); }
   t0 = performance.now() - (reduceMotion ? 60000 : 0);
-  shooters = []; nextShooter = 0; push = null;
+  shooters = []; nextShooter = 0; pushes = []; glow = 0;
   playSong();
   msgEl.classList.remove('show'); hintEl.classList.remove('show');
 }
@@ -946,20 +1001,22 @@ function tapAt(x, y){
   const fingerCells = Math.max(1, Math.round(10 * dpr / gh));     // ~10px of slack around a fingertip
   const onMoon = MOON && Math.hypot(x - MOON.cx, y - MOON.cy) < MOON.R * 1.15;
   if (!onMoon && onBouquet(cx, cy, fingerCells)) {
-    const busy = push && time < push.start + PUSH_DUR + 0.15;
-    if (!busy && !reduceMotion) push = { start: time, dir: x > CX ? -1 : 1 };
+    if (!reduceMotion) {
+      pushes = pushes.filter(p => time - p.start < PUSH_DUR + 0.3);
+      if (pushes.length < 12) pushes.push({ start: time, dir: x > CX ? -1 : 1 });
+    }
   } else {
     spawnShooter(time, x, y);
   }
 }
 
 function drawHoldRing(now){
-  const active = (hold && !hold.done && (now - hold.t) > 350) || burst;
+  const active = (hold && !hold.moon && !hold.done && (now - hold.t) > 350) || burst;
   if (!active && !uiDirty) return;
   uctx.setTransform(1, 0, 0, 1, 0, 0);
   uctx.clearRect(0, 0, ui.width, ui.height);
   uiDirty = !!active;
-  if (hold && !hold.done) {
+  if (hold && !hold.done && !hold.moon) {
     const el = (now - hold.t) / 1000;
     if (el > 0.35) {
       const k = Math.min(1, (el - 0.35) / (CONFIG.holdSeconds - 0.35));
@@ -984,7 +1041,8 @@ function drawHoldRing(now){
 
 ui.addEventListener('pointerdown', (e) => {
   if (!started) return;
-  hold = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, done: false };
+  const moon = !!MOON && Math.hypot(e.clientX - MOON.cx, e.clientY - MOON.cy) < MOON.R * 1.25;
+  hold = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, done: false, moon };
   try { ui.setPointerCapture(e.pointerId); } catch (_) {}
 });
 ui.addEventListener('pointermove', (e) => {
