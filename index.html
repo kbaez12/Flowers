@@ -67,14 +67,15 @@ const CONFIG = {
   song: "song.mp3",           // audio file that plays when they tap to bloom ("" = no music)
   songStart: 0,               // start the song this many seconds in
   songVolume: 0.85,
-  songLoop: true,             // true = keep repeating
+  songLoop: true,             // keep repeating when the song ends (false = play once)
   shootingStars: true,        // streaks across the sky once the bouquet has bloomed
   shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
   pushStrength: 1,            // how far the bouquet leans away when touched
-  holdSeconds: 3,
+  holdSeconds: 3,             // press and hold this long anywhere to replay
   moon: true,                 // ASCII moon in the top-left corner
   moonSize: 0.11,             // radius as a fraction of the smaller screen side
-  moonlight: true,            // hold the moon: it glows, lights the flowers, and they lean toward it             // press and hold this long anywhere to replay
+  moonlight: true,            // hold the moon: it glows, lights the flowers, and they lean toward it
+  moonSparkles: 16,           // white 4-point sparkles that appear in the sky while the moon is held (0 = none)
 };
 
 /* Characters ordered from light to dense */
@@ -197,7 +198,7 @@ const canvas = document.getElementById('c');
 const ui = document.getElementById('ui');
 const uctx = ui.getContext('2d');
 
-let MOON = null, quality = 1;
+let MOON = null, quality = 1, sparkles = [];
 let W, H, dpr, gw, gh, cellW, cellH, cols, rows, S, CX, TOP, jitter, stars = [];
 let buf = null;            // Float32 RGBA per cell, premultiplied colour (0..255) + alpha (0..1)
 let out = null, outView = null;   // Uint8 per cell: boosted colour + glyph index (+1) in alpha
@@ -347,6 +348,47 @@ function resize(){
   for (let i = 0; i < CONFIG.stars; i++) {
     stars.push({ x: sr() * W, y: sr() * H, ph: sr() * 6.28, sp: 0.6 + sr() * 1.8, d: sr() * 1.6 });
   }
+  // sparkles for moonlight: a group under the moon, more beside the bouquet, a few elsewhere
+  sparkles = [];
+  const qs = mulberry32(17);
+  const flowerShape = (x, y) =>                              // rough outline of flowers + stems
+    (((x - CX) / (S * 0.5)) ** 2 + ((y - (TOP + S * 0.42)) / (S * 0.52)) ** 2 < 1) ||
+    (Math.abs(x - CX) < S * 0.24 && y > TOP + S * 0.6 && y < TOP + S * 1.04);
+  const gap = Math.max(26, Math.min(W, H) * 0.075);
+  const okSpot = (x, y) => x > 14 && x < W - 14 && y > 14 && y < H - 56 &&
+    !flowerShape(x, y) && Math.hypot(x - MOON.cx, y - MOON.cy) > MOON.R * 1.55 &&
+    !sparkles.some(o => Math.hypot(o.x - x, o.y - y) < gap);
+  const place = (count, pick) => {
+    for (let n = 0, tries = 0; n < count && tries < 400; tries++) {
+      const [x, y] = pick();
+      if (!okSpot(x, y)) continue;
+      sparkles.push({ x, y, ph: qs() * 6.28, sp: 0.6 + qs() * 1.6, tilt: (qs() - 0.5) * 0.7, size: 8 + qs() * 11 });
+      n++;
+    }
+  };
+  const total = CONFIG.moonSparkles;
+  const nMoon = Math.round(total * 0.3), nSide = Math.round(total * 0.25), nRest = total - nMoon - nSide * 2;
+  const bTop = TOP - S * 0.05, bBot = TOP + S * 1.05;
+  place(nMoon, () => [MOON.cx + (qs() - 0.35) * MOON.R * 3.2, MOON.cy + MOON.R * (1.6 + qs() * 2.4)]);   // under the moon
+  place(nSide, () => [CX - S * (0.2 + qs() * 0.9), bTop + qs() * (bBot - bTop)]);                     // left of the flowers
+  place(nSide, () => [CX + S * (0.2 + qs() * 0.9), bTop + qs() * (bBot - bTop)]);                     // right of the flowers
+  place(nRest, () => [qs() * W, qs() * H]);                                                           // anywhere else
+  place(6, () => [CX + (qs() - 0.5) * S * 0.95, Math.max(18, TOP - S * 0.32) + qs() * S * 0.36]);     // above the bouquet
+  place(6, () => {                                                                                    // top-right corner
+    const x = W * (0.58 + qs() * 0.4), y = 16 + qs() * Math.max(60, Math.min(H * 0.3, TOP + S * 0.05));
+    return (x > W - 70 && y < 70) ? [-1, -1] : [x, y];                                                // keep clear of the music button
+  });
+  // a few spots were too crowded right above the flowers, so they're left out (others keep their places)
+  const SKIP = [4, 19, 26, 27];
+  sparkles = sparkles.filter((_, i) => !SKIP.includes(i));
+  // light up in a random order; any star dot under/next to a sparkle hides while it shines
+  const order = sparkles.map((_, i) => i).sort(() => qs() - 0.5);
+  order.forEach((idx, i) => { sparkles[idx].order = i; });
+  for (const st of stars) {
+    st.under = -1;
+    sparkles.forEach((sp, i) => { if (Math.hypot(st.x - sp.x, st.y - sp.y) < sp.size * 1.3) st.under = i; });
+  }
+
 }
 let resizeTimer = 0;
 function scheduleResize(){ clearTimeout(resizeTimer); resizeTimer = setTimeout(resize, 120); }
@@ -850,23 +892,68 @@ function spawnShooter(time, ox, oy){
     speed: big * (0.7 + Math.random() * 0.5), tail, born: time, life: 0.8 + Math.random() * 0.6,
   });
 }
+/* white 4-point sparkle (long tapered cross with a soft glow, same tone as the stars), drawn once and reused */
+const SPARK = document.createElement('canvas');
+(() => {
+  const n = 160, c = n / 2, L = 70, Lh = 44;
+  SPARK.width = SPARK.height = n;
+  const g = SPARK.getContext('2d');
+  const halo = g.createRadialGradient(c, c, 0, c, c, c * 0.55);
+  halo.addColorStop(0, 'rgba(220,232,255,0.45)');
+  halo.addColorStop(1, 'rgba(190,210,255,0)');
+  g.fillStyle = halo; g.fillRect(0, 0, n, n);
+  const arms = (len, lenH, color, blur) => {
+    g.save(); g.translate(c, c);
+    g.shadowColor = 'rgba(205,222,255,0.9)'; g.shadowBlur = blur;
+    g.beginPath();
+    g.moveTo(0, -len); g.quadraticCurveTo(0, 0, lenH, 0);
+    g.quadraticCurveTo(0, 0, 0, len); g.quadraticCurveTo(0, 0, -lenH, 0);
+    g.quadraticCurveTo(0, 0, 0, -len);
+    g.fillStyle = color; g.fill(); g.restore();
+  };
+  const grad = g.createRadialGradient(c, c, 0, c, c, L);
+  grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.3, '#f2f6ff'); grad.addColorStop(1, '#bcd0ff');
+  arms(L, Lh, grad, 14);
+  arms(L * 0.45, Lh * 0.45, '#ffffff', 6);          // bright core
+})();
+function sparkleK(sp){ return smooth(0, 1, (glow - sp.order * (0.5 / Math.max(1, sparkles.length))) / 0.5); }
+function drawSparkles(time){
+  if (glow < 0.02 || !sparkles.length) return;
+  kctx.save();
+  kctx.globalCompositeOperation = 'lighter';
+  for (const sp of sparkles) {
+    const k = sparkleK(sp);                                         // they light up one after another
+    if (k <= 0.01) continue;
+    const tw = 0.82 + 0.18 * Math.sin(time * (1.4 + sp.sp) + sp.ph);
+    const size = sp.size * dpr * (0.35 + 0.65 * k) * tw;
+    kctx.setTransform(1, 0, 0, 1, sp.x * dpr, sp.y * dpr);
+    kctx.rotate(sp.tilt + Math.sin(time * 0.4 + sp.ph) * 0.06);
+    kctx.globalAlpha = k * tw;
+    kctx.drawImage(SPARK, -size, -size, size * 2, size * 2);
+  }
+  kctx.restore();
+}
+
 function drawSky(T, time){
   kctx.setTransform(1, 0, 0, 1, 0, 0);
   kctx.clearRect(0, 0, skyCv.width, skyCv.height);
   // stars
   const fade = prog(T, BLOOM_END - 1.6, 1.8);
   if (fade > 0) {
-    const s = Math.max(1, Math.round(dpr * 1.4));
+    const s = Math.max(1, Math.round(dpr * 1.4 * (1 + 0.5 * glow)));
     kctx.fillStyle = '#fff';
     for (const st of stars) {
       if (T < BLOOM_END - 1.6 + st.d) continue;
       if (onBouquet(Math.floor(st.x * dpr / gw), Math.floor(st.y * dpr / gh))) continue;
       const tw = 0.5 + 0.5 * Math.sin(time * st.sp + st.ph);
-      kctx.globalAlpha = Math.min(1, fade * (0.15 + 0.85 * tw * tw * tw) * (1 + 0.6 * glow));
+      const hide = st.under >= 0 && sparkles[st.under] ? sparkleK(sparkles[st.under]) : 0;
+      if (hide > 0.98) continue;
+      kctx.globalAlpha = Math.min(1, fade * ((0.15 + 0.85 * tw * tw * tw) * (1 + 1.3 * glow) + 0.25 * glow)) * (1 - hide);
       kctx.fillRect(Math.round(st.x * dpr), Math.round(st.y * dpr), s, s);
     }
     kctx.globalAlpha = 1;
   }
+  drawSparkles(time);
   // shooting stars
   if (reduceMotion) return;
   if (CONFIG.shootingStars && T > BLOOM_END - 0.5) {
@@ -953,6 +1040,11 @@ if (CONFIG.song) {
   audio.loop = CONFIG.songLoop;
   audio.setAttribute('playsinline', '');
   audio.addEventListener('error', () => { audio = null; soundBtn.classList.remove('show'); });
+  audio.addEventListener('ended', () => {            // backup for browsers that ignore .loop
+    if (!CONFIG.songLoop || !audio) return;
+    try { audio.currentTime = 0; } catch (_) {}
+    audio.play().catch(() => {});
+  });
 }
 function playSong(){
   if (!audio) return;
@@ -1060,6 +1152,7 @@ ui.addEventListener('pointerup', (e) => {
 ui.addEventListener('pointercancel', () => { hold = null; });
 ui.addEventListener('contextmenu', (e) => e.preventDefault());   // no long-press menu
 window.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') begin(e); });
+
 </script>
 </body>
 </html>
