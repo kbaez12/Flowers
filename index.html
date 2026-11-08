@@ -73,6 +73,7 @@ const CONFIG = {
   shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
   pushStrength: 1,            // how far the bouquet leans away when touched
   holdSeconds: 3,             // press and hold this long anywhere to replay
+  skyDrawing: true,           // drag a finger across the night sky to draw a glowing line (stays 3s, then erases start-to-end)
   moon: true,                 // ASCII moon in the top-left corner
   moonSize: 0.11,             // radius as a fraction of the smaller screen side
   moonlight: true,            // hold the moon: it glows, lights the flowers, and they lean toward it
@@ -820,9 +821,50 @@ function appleOutline(R){
   }
   return pts;
 }
+/* the whole apple (body, stem, leaf) at the current transform; gold = 0..1 turns it golden */
+const GOLD = [255, 196, 64], GOLD_LIGHT = [255, 244, 196];
+const toGold = (c, g) => [lerp(c[0], GOLD[0], g), lerp(c[1], GOLD[1], g), lerp(c[2], GOLD[2], g)];
+function drawAppleBody(R, gold){
+  const iv = invM();
+  fillLocal(appleOutline(R), (X, Y) => {
+    const lx = iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), ly = iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5]);
+    const nx = lx / R, ny = ly / R, z = Math.sqrt(Math.max(0, 1 - nx * nx * 0.9 - ny * ny * 0.9));
+    const diff = Math.max(0, -0.5 * nx - 0.5 * ny + 0.7 * z);
+    const shine = Math.exp(-(((nx + 0.42) ** 2) / 0.018 + ((ny + 0.3) ** 2) / 0.03));
+    const streak = 0.92 + 0.08 * Math.sin(nx * 17 + Math.sin(ny * 5) * 2);     // faint vertical streaks
+    const k = Math.min(1, diff * 1.25) * streak;
+    for (let c = 0; c < 3; c++) {
+      const dark = lerp(APPLE_DARK[c], GOLD[c] * 0.45, gold), mid = lerp(APPLE_RED[c], GOLD[c], gold);
+      SH[c] = lerp(dark, mid, k) + (APPLE_SHINE[c] - mid) * shine * 0.85;
+    }
+    SH[3] = 1;
+  });
+  // stem
+  const stem = quadPts(0, -R * 0.62, R * 0.02, -R * 0.9, R * 0.16, -R * 1.12, 8);
+  strokeLocal(stem, R * 0.07, false, toGold([120, 70, 34], gold));
+  strokeLocal(stem, R * 0.025, false, toGold([176, 118, 62], gold));
+  // leaf
+  rSave(); rTranslate(R * 0.08, -R * 0.8); rRotate(-0.42);
+  const L = R * 0.9, Wd = R * 0.24;
+  const leaf = [0, 0];
+  cubicTo(leaf, 0, 0, L * 0.25, -Wd * 1.2, L * 0.7, -Wd * 0.9, L, -Wd * 0.05, 10);
+  cubicTo(leaf, L, -Wd * 0.05, L * 0.7, Wd * 0.8, L * 0.3, Wd * 1.0, 0, 0, 10);
+  leaf.length -= 2;
+  fillLocal(leaf, gold > 0 ? null : gradX(L, APPLE_LEAF), toGold([90, 160, 60], gold));
+  strokeLocal(leaf, R * 0.02, true, toGold([30, 70, 24], gold));
+  strokeLocal([L * 0.04, 0, L * 0.95, -Wd * 0.05], R * 0.02, false, toGold([170, 220, 120], gold));
+  for (let i = 1; i <= 4; i++) {                       // side veins
+    const vx = L * (0.15 + i * 0.17);
+    strokeLocal([vx, 0, vx + L * 0.1, -Wd * (0.7 - i * 0.08)], R * 0.015, false, toGold([140, 200, 100], gold), 0.7);
+    strokeLocal([vx, 0, vx + L * 0.1, Wd * (0.62 - i * 0.08)], R * 0.015, false, toGold([140, 200, 100], gold), 0.7);
+  }
+  rRestore();
+}
+const appleSize = () => Math.max(38, Math.min(110, Math.min(W, H) * 0.17));
+
 function drawApple(time, alpha){
   if (!CONFIG.startApple || alpha <= 0) return;
-  const R = Math.max(38, Math.min(110, Math.min(W, H) * 0.17));
+  const R = appleSize();
   const bob = Math.sin(time * 2.1);
   const cx = W / 2, cy = H / 2 - R * 1.55 + bob * R * 0.1;
   GA = alpha;
@@ -832,43 +874,60 @@ function drawApple(time, alpha){
   const sh = 0.8 + 0.2 * -bob;
   fillLocal(ellipsePts(0, 0, R * 0.62 * sh, R * 0.08 * sh, 0, 24), null, [92, 70, 64], 0.55 * sh);
   rRestore();
-
   rSave(); rTranslate(cx, cy); rRotate(Math.sin(time * 1.05) * 0.05);
-  // body: shaded like a sphere, light from the upper left, with a bright shine
-  const iv = invM();
-  fillLocal(appleOutline(R), (X, Y) => {
-    const lx = iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), ly = iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5]);
-    const nx = lx / R, ny = ly / R, z = Math.sqrt(Math.max(0, 1 - nx * nx * 0.9 - ny * ny * 0.9));
-    const diff = Math.max(0, -0.5 * nx - 0.5 * ny + 0.7 * z);
-    const shine = Math.exp(-(((nx + 0.42) ** 2) / 0.018 + ((ny + 0.3) ** 2) / 0.03));
-    const streak = 0.92 + 0.08 * Math.sin(nx * 17 + Math.sin(ny * 5) * 2);     // faint vertical streaks
-    const k = Math.min(1, diff * 1.25) * streak;
-    SH[0] = lerp(APPLE_DARK[0], APPLE_RED[0], k) + (APPLE_SHINE[0] - APPLE_RED[0]) * shine * 0.85;
-    SH[1] = lerp(APPLE_DARK[1], APPLE_RED[1], k) + (APPLE_SHINE[1] - APPLE_RED[1]) * shine * 0.85;
-    SH[2] = lerp(APPLE_DARK[2], APPLE_RED[2], k) + (APPLE_SHINE[2] - APPLE_RED[2]) * shine * 0.85;
-    SH[3] = 1;
-  });
-  // stem
-  strokeLocal(quadPts(0, -R * 0.62, R * 0.02, -R * 0.9, R * 0.16, -R * 1.12, 8), R * 0.07, false, [120, 70, 34]);
-  strokeLocal(quadPts(0, -R * 0.62, R * 0.02, -R * 0.9, R * 0.16, -R * 1.12, 8), R * 0.025, false, [176, 118, 62]);
-  // leaf
-  rSave(); rTranslate(R * 0.08, -R * 0.8); rRotate(-0.42);
-  const L = R * 0.9, Wd = R * 0.24;
-  const leaf = [0, 0];
-  cubicTo(leaf, 0, 0, L * 0.25, -Wd * 1.2, L * 0.7, -Wd * 0.9, L, -Wd * 0.05, 10);
-  cubicTo(leaf, L, -Wd * 0.05, L * 0.7, Wd * 0.8, L * 0.3, Wd * 1.0, 0, 0, 10);
-  leaf.length -= 2;
-  fillLocal(leaf, gradX(L, APPLE_LEAF));
-  strokeLocal(leaf, R * 0.02, true, [30, 70, 24]);
-  strokeLocal([L * 0.04, 0, L * 0.95, -Wd * 0.05], R * 0.02, false, [170, 220, 120]);
-  for (let i = 1; i <= 4; i++) {                       // side veins
-    const vx = L * (0.15 + i * 0.17);
-    strokeLocal([vx, 0, vx + L * 0.1, -Wd * (0.7 - i * 0.08)], R * 0.015, false, [140, 200, 100], 0.7);
-    strokeLocal([vx, 0, vx + L * 0.1, Wd * (0.62 - i * 0.08)], R * 0.015, false, [140, 200, 100], 0.7);
-  }
-  rRestore();
+  drawAppleBody(R, 0);
   rRestore();
   GA = 1;
+}
+
+/* Intro after the first tap: the whole apple (stem and leaf too) falls toward the base of the stems,
+   shrinking and turning golden as it drops, then becomes a glowing golden seed the bouquet grows from.
+   u = seconds since the tap. */
+const INTRO = 2.85;                // tap -> stems start: fall (1.4s) + turn into the seed (0.45s) + seed rests (~1s)
+let introOn = false;
+function drawAppleIntro(u, time){
+  if (!introOn || u < 0 || u > INTRO + 1.2) return;
+  const R = appleSize();
+  const sx = W / 2, sy = H / 2 - R * 1.55;                  // where it was bobbing
+  const gx = CX, gy = TOP + S * 0.985;                      // the base of the stems
+  rSet(1 / cellW, 0, 0, 1 / cellH, 0, 0);
+  const FALL = 1.4, MORPH = 0.45;
+  const seedR = Math.max(8, R * 0.16);
+  // the falling, shrinking apple
+  if (u < FALL + MORPH) {
+    const k = Math.min(1, u / FALL);
+    const e = k * k * (1.6 - 0.6 * k);                      // speeds up like it's falling, eases at the end
+    const scale = lerp(1, seedR * 1.5 / R, smooth(0, 1, k));
+    const x = lerp(sx, gx, e), y = lerp(sy, gy - seedR * 0.4, e);
+    const gold = smooth(0.45, 1, k);                        // turns golden on the way down
+    GA = 1 - smooth(FALL, FALL + MORPH, u);                 // hands over to the seed
+    rSave(); rTranslate(x, y); rRotate(Math.sin(time * 1.05) * 0.05 + e * 0.9);
+    drawAppleBody(R * scale, gold);
+    rRestore();
+    GA = 1;
+  }
+  // the golden seed: forms as the apple finishes shrinking, glows and pulses, then fades as the stems take over
+  const seedA = smooth(FALL - 0.1, FALL + MORPH, u) * (1 - smooth(INTRO + 0.4, INTRO + 1.2, u));
+  if (seedA > 0) {
+    const pulse = 1 + 0.12 * Math.sin(time * 8);
+    rSave(); rTranslate(gx, gy - seedR * 0.4);
+    let iv = invM(); const RR = seedR * 4.2 * pulse;
+    fillLocal(ellipsePts(0, 0, RR, RR * 0.85, 0, 24), (X, Y) => {           // warm glow around it
+      const lx = iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), ly = iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5]);
+      const t = Math.hypot(lx / RR, ly / (RR * 0.85));
+      SH[0] = 255; SH[1] = 220 - 50 * t; SH[2] = 120 - 70 * t; SH[3] = seedA * Math.pow(Math.max(0, 1 - t), 2) * 0.8;
+    });
+    rRotate(0.35);
+    iv = invM();
+    const sw = seedR * 0.75, shh = seedR * 1.15;
+    fillLocal(ellipsePts(0, 0, sw, shh, 0, 16), (X, Y) => {                 // the seed: golden almond with a shine
+      const lx = iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), ly = iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5]);
+      const t = Math.min(1, Math.hypot((lx + sw * 0.3) / sw, (ly + shh * 0.3) / shh) * 0.8);
+      SH[0] = lerp(GOLD_LIGHT[0], GOLD[0] * 0.85, t); SH[1] = lerp(GOLD_LIGHT[1], GOLD[1] * 0.8, t); SH[2] = lerp(GOLD_LIGHT[2], GOLD[2] * 0.6, t);
+      SH[3] = seedA;
+    });
+    rRestore();
+  }
 }
 
 function drawScene(T, time){
@@ -905,7 +964,7 @@ function drawScene(T, time){
     }
   }
   for (const f of FLOWERS) drawFlower(f, T, time, px);   // buds and blooms, back to front
-  if (T < 0.8) drawApple(time, 1 - T / 0.8);              // the start apple fades as the bloom begins
+  drawAppleIntro(T + INTRO, time);                        // first tap: apple falls, shrinks, becomes the golden seed
   applyMoonlight();
 }
 
@@ -1028,6 +1087,63 @@ function drawSparkles(time){
   kctx.restore();
 }
 
+/* ---------- Drawing in the sky: drag across the starry sky to leave a glowing line ----------
+   Starts only on open sky (not the flowers or the moon). Lines live on the sky layer, so where
+   they cross the bouquet they pass behind it. Each stays 3s after the finger lifts, then erases
+   itself from where it began, travelling along the line to its end. */
+let strokes = [];                      // [{ pts: [x, y, x, y, ...], end: time the finger lifted or 0 }]
+let liveStroke = null;
+function drawStrokes(time){
+  if (!strokes.length) return;
+  const STAY = 3;
+  const sweepTime = st => Math.max(1.2, Math.min(2.5, st.pts.length / 2 * 0.025));   // longer lines take a bit longer
+  strokes = strokes.filter(st => !st.end || time - st.end < STAY + sweepTime(st));
+  kctx.save();
+  kctx.globalCompositeOperation = 'lighter';
+  kctx.lineCap = 'round'; kctx.lineJoin = 'round';
+  for (const st of strokes) {
+    const p = st.pts, n = p.length / 2;
+    if (n < 2) continue;
+    // erase sweep: u = how far along the line (0 = start, 1 = end) has already disappeared
+    const u = st.end ? smooth(0, 1, (time - st.end - STAY) / sweepTime(st)) : 0;
+    const cut = u * (n - 1), FADE = Math.max(3, n * 0.12);   // soft edge just ahead of the cut
+    const solidFrom = u > 0 ? Math.min(n - 1, Math.ceil(cut + FADE)) : 0;   // until the erase begins, draw the whole line
+    const passes = [[12, '170,195,255', 0.10], [5, '205,222,255', 0.28], [1.8, '255,255,255', 0.9]];
+    // the part that is still fully there: one smooth curve
+    if (solidFrom < n - 1) {
+      const path = () => {
+        kctx.beginPath(); kctx.moveTo(p[2 * solidFrom] * dpr, p[2 * solidFrom + 1] * dpr);
+        for (let i = solidFrom + 1; i < n - 1; i++) {
+          const mx = (p[2 * i] + p[2 * i + 2]) / 2, my = (p[2 * i + 1] + p[2 * i + 3]) / 2;
+          kctx.quadraticCurveTo(p[2 * i] * dpr, p[2 * i + 1] * dpr, mx * dpr, my * dpr);
+        }
+        kctx.lineTo(p[2 * n - 2] * dpr, p[2 * n - 1] * dpr);
+      };
+      for (const [w, rgb, al] of passes) { path(); kctx.strokeStyle = `rgba(${rgb},${al})`; kctx.lineWidth = w * dpr; kctx.stroke(); }
+    }
+    // the fading edge: short segments getting fainter toward the cut
+    if (u > 0) {
+      kctx.lineCap = 'butt';
+      for (let i = Math.max(0, Math.floor(cut)); i < solidFrom; i++) {
+        const fa = clamp((i + 0.5 - cut) / FADE);
+        if (fa <= 0.01) continue;
+        for (const [w, rgb, al] of passes) {
+          kctx.strokeStyle = `rgba(${rgb},${al * fa})`; kctx.lineWidth = w * dpr;
+          kctx.beginPath(); kctx.moveTo(p[2 * i] * dpr, p[2 * i + 1] * dpr); kctx.lineTo(p[2 * i + 2] * dpr, p[2 * i + 3] * dpr); kctx.stroke();
+        }
+      }
+      kctx.lineCap = 'round';
+    }
+    if (!st.end) {                                     // a little glow at the fingertip while drawing
+      const hx = p[2 * n - 2] * dpr, hy = p[2 * n - 1] * dpr, rr = 7 * dpr;
+      const g = kctx.createRadialGradient(hx, hy, 0, hx, hy, rr);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(200,220,255,0)');
+      kctx.fillStyle = g; kctx.beginPath(); kctx.arc(hx, hy, rr, 0, 6.283); kctx.fill();
+    }
+  }
+  kctx.restore();
+}
+
 function drawSky(T, time){
   kctx.setTransform(1, 0, 0, 1, 0, 0);
   kctx.clearRect(0, 0, skyCv.width, skyCv.height);
@@ -1048,6 +1164,7 @@ function drawSky(T, time){
     kctx.globalAlpha = 1;
   }
   drawSparkles(time);
+  drawStrokes(time);
   // shooting stars
   if (reduceMotion) return;
   if (CONFIG.shootingStars && T > BLOOM_END - 0.5) {
@@ -1119,6 +1236,7 @@ function frame(now){
   lastDraw = now;
   if (!started) {                                       // start screen: just the bobbing apple
     if (CONFIG.startApple) { buf.fill(0); drawApple(now / 1000, 1); asciiPass(); }
+    drawHoldRing(now);                                  // lets the replay pulse finish fading
     return;
   }
   adapt(now);
@@ -1151,6 +1269,7 @@ function frame(now){
   asciiPass();
   drawSky(T, time);
   drawHoldRing(now);
+  if (!started) return;                                 // the hold just sent us back to the apple screen
   if (T > BLOOM_END + 0.3) {
     if (CONFIG.message) msgEl.classList.add('show');
     hintEl.classList.add('show');
@@ -1203,10 +1322,28 @@ document.addEventListener('visibilitychange', () => {   // pause when they leave
   if (document.hidden) audio.pause(); else if (!audio.ended || audio.loop) audio.play().catch(() => {});
 });
 
+/* hold-to-replay: go all the way back to the apple screen */
+let justReset = false;                 // ignore the lift of the finger that did the reset
+function backToStart(){
+  started = false; justReset = true;
+  hold = null; strokes = []; liveStroke = null; shooters = []; nextShooter = 0; pushes = [];
+  glow = 0; p2 = 0; vis = 0; flowerLit.fill(0); songLast = -1; introOn = false;
+  if (audio) { try { audio.pause(); audio.currentTime = CONFIG.songStart || 0; } catch (_) {} }
+  clearInterval(fadeTimer);
+  soundBtn.classList.remove('show');
+  msgEl.classList.remove('show'); hintEl.classList.remove('show'); hintEl._w = null;
+  kctx.setTransform(1, 0, 0, 1, 0, 0); kctx.clearRect(0, 0, skyCv.width, skyCv.height);
+  startEl.classList.remove('gone');
+}
+
 function begin(e){
   if (e && e.cancelable) e.preventDefault();
+  const first = !started;
   if (!started) { started = true; startEl.classList.add('gone'); }
-  t0 = performance.now() - (reduceMotion ? 60000 : 0);
+  introOn = first && CONFIG.startApple && !reduceMotion;     // the apple-seed intro plays on the first tap only
+  t0 = performance.now() - (reduceMotion ? 60000 : 0) + (introOn ? INTRO * 1000 : 0);
+  hintEl._w = null; strokes = []; liveStroke = null;
+  msgEl.textContent = CONFIG.message;
   shooters = []; nextShooter = 0; pushes = []; glow = 0; p2 = 0; vis = 0; flowerLit.fill(0); songLast = -1;
   playSong();
   msgEl.classList.remove('show'); hintEl.classList.remove('show');
@@ -1233,12 +1370,12 @@ function tapAt(x, y){
 }
 
 function drawHoldRing(now){
-  const active = (hold && !hold.moon && !hold.done && (now - hold.t) > 350) || burst;
+  const active = (hold && !hold.moon && !hold.moved && !hold.done && (now - hold.t) > 350) || burst;
   if (!active && !uiDirty) return;
   uctx.setTransform(1, 0, 0, 1, 0, 0);
   uctx.clearRect(0, 0, ui.width, ui.height);
   uiDirty = !!active;
-  if (hold && !hold.done && !hold.moon) {
+  if (hold && !hold.done && !hold.moon && !hold.moved) {
     const el = (now - hold.t) / 1000;
     if (el > 0.35) {
       const k = Math.min(1, (el - 0.35) / (CONFIG.holdSeconds - 0.35));
@@ -1250,7 +1387,7 @@ function drawHoldRing(now){
       uctx.strokeStyle = 'rgba(255,240,235,0.9)';
       uctx.beginPath(); uctx.arc(x, y, rad, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); uctx.stroke();
     }
-    if (el >= CONFIG.holdSeconds) { hold.done = true; burst = { x: hold.x, y: hold.y, t: now }; begin(); }
+    if (el >= CONFIG.holdSeconds) { hold.done = true; burst = { x: hold.x, y: hold.y, t: now }; backToStart(); }
   }
   if (burst) {
     const k = (now - burst.t) / 600;
@@ -1264,22 +1401,44 @@ function drawHoldRing(now){
 ui.addEventListener('pointerdown', (e) => {
   if (!started) return;
   const moon = !!MOON && Math.hypot(e.clientX - MOON.cx, e.clientY - MOON.cy) < MOON.R * 1.25;
-  hold = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, done: false, moon };
+  // can this touch draw? only if it starts on open sky (not on the flowers or the moon)
+  const fingerCells = Math.max(1, Math.round(10 * dpr / gh));
+  const onFlowers = onBouquet(Math.floor(e.clientX * dpr / gw), Math.floor(e.clientY * dpr / gh), fingerCells);
+  const canDraw = CONFIG.skyDrawing && !moon && !onFlowers;
+  hold = { id: e.pointerId, x: e.clientX, y: e.clientY, ox: e.clientX, oy: e.clientY,
+           t: performance.now(), moved: false, done: false, moon, canDraw };
   try { ui.setPointerCapture(e.pointerId); } catch (_) {}
 });
 ui.addEventListener('pointermove', (e) => {
   if (!hold || e.pointerId !== hold.id) return;
-  if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 24) hold.moved = true;
-  hold.x = e.clientX; hold.y = e.clientY;        // ring follows the finger
+  const x = e.clientX, y = e.clientY;
+  if (!hold.moved && Math.hypot(x - hold.ox, y - hold.oy) > 12) {
+    hold.moved = true;                            // moving cancels the replay ring
+    if (hold.canDraw && !hold.done) {             // ...and on the sky it starts a drawing
+      liveStroke = { pts: [hold.ox, hold.oy], end: 0 };
+      strokes.push(liveStroke);
+      if (strokes.length > 14) strokes.shift();
+    }
+  }
+  if (liveStroke) {
+    const p = liveStroke.pts, lx = p[p.length - 2], ly = p[p.length - 1];
+    if (Math.hypot(x - lx, y - ly) > 3 && p.length < 1600) p.push(x, y);
+  }
+  hold.x = x; hold.y = y;
 });
+const endStroke = () => { if (liveStroke) { liveStroke.end = performance.now() / 1000; liveStroke = null; } };
 ui.addEventListener('pointerup', (e) => {
-  if (!started) { begin(e); return; }
+  if (!started) {
+    if (justReset) { justReset = false; return; }   // that finger just finished the hold; wait for a fresh tap
+    begin(e); return;
+  }
   if (!hold || e.pointerId !== hold.id) return;
   const h = hold; hold = null;
+  endStroke();
   if (h.done) return;
   if (performance.now() - h.t < TAP_MAX_MS && !h.moved) tapAt(e.clientX, e.clientY);
 });
-ui.addEventListener('pointercancel', () => { hold = null; });
+ui.addEventListener('pointercancel', () => { hold = null; endStroke(); });
 ui.addEventListener('contextmenu', (e) => e.preventDefault());   // no long-press menu
 window.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') begin(e); });
 
