@@ -81,6 +81,7 @@ const CONFIG = {
   pianoLights: true,          // after the drop, each piano note lights up one lily (false = off)
   pianoGlow: 1,               // how bright a lily gets on a note (0.5 = softer, 1.5 = stronger)
   pianoShift: 0,              // nudge every note earlier (-) or later (+) in seconds, e.g. -0.05
+  danceSway: 1,               // phase 2: how far the bouquet sways side to side with the music (0 = off)
   moonSparkles: 16,           // white 4-point sparkles that appear in the sky while the moon is held (0 = none)
 };
 
@@ -108,11 +109,11 @@ const FLOWERS = [
   { x: 0.19, y: 0.16, r: 0.12,  rot:  15, p: 'yellow',  shade: .82 },
   { x: 0.25, y: 0.40, r: 0.13,  rot:   5, p: 'magenta', shade: .85 },
   { x:-0.25, y: 0.39, r: 0.13,  rot: -25, p: 'yellow',  shade: .92 },
-  { x:-0.27, y: 0.68, r: 0.12,  rot:  20, p: 'yellow',  shade: .92 },
+  { x:-0.27, y: 0.68, r: 0.12,  rot:  20, p: 'pink',    shade: .92 },
   { x: 0.25, y: 0.71, r: 0.11,  rot: -12, p: 'wine',    shade: .95 },
   { x: 0.14, y: 0.50, r: 0.18,  rot:  12, p: 'cream',   shade: 1 },
-  { x:-0.14, y: 0.46, r: 0.17,  rot:  -8, p: 'pink',    shade: 1 },
-  { x:-0.03, y: 0.27, r: 0.20,  rot:   3, p: 'red',     shade: 1 },
+  { x:-0.14, y: 0.46, r: 0.17,  rot:  -8, p: 'red',     shade: 1 },
+  { x:-0.03, y: 0.27, r: 0.20,  rot:   3, p: 'pink',    shade: 1 },
   { x:-0.02, y: 0.66, r: 0.17,  rot:  28, p: 'peach',   shade: 1 },
 ];
 
@@ -574,7 +575,15 @@ let vis = 0;                           // what's shown: max(glow, p2)
    at the song's real tempo (56.4 BPM), checked against the piano in the audio. Each note lights the next lily. */
 const PIANO_NOTES = [[58.862, 1.0], [59.926, 0.82], [60.99, 0.82], [62.054, 0.82], [63.119, 1.0], [64.183, 0.82], [65.247, 0.82], [66.311, 0.82], [67.375, 1.0], [68.439, 0.82], [69.504, 0.82], [70.568, 0.82], [71.632, 1.0], [72.696, 0.82], [73.76, 0.82], [74.824, 0.82], [75.889, 1.0], [76.953, 0.82], [78.017, 0.82], [79.081, 0.82], [80.145, 1.0], [81.209, 0.82], [82.274, 0.82], [82.806, 0.62], [83.338, 0.82], [83.87, 0.62], [84.402, 1.0], [85.466, 0.82], [86.53, 0.82], [87.594, 0.82], [88.659, 1.0], [89.723, 0.82], [90.787, 0.82], [91.851, 0.82], [92.915, 1.0], [93.979, 0.82], [95.044, 0.82], [96.108, 0.82], [97.172, 1.0], [98.236, 0.82], [99.3, 0.82], [100.364, 0.82], [101.429, 1.0], [102.493, 0.82], [103.557, 0.82], [104.621, 0.82], [105.685, 1.0], [106.749, 0.82], [107.814, 0.82], [108.346, 0.62], [108.878, 0.82], [109.41, 0.62], [109.942, 1.0], [111.006, 0.82], [112.07, 0.82], [113.134, 0.82], [114.199, 1.0], [115.263, 0.82], [116.327, 0.82], [117.391, 0.82], [118.455, 1.0], [119.519, 0.82], [120.584, 0.82], [121.648, 0.82], [122.712, 1.0], [123.776, 0.82]];
 const LIGHT_ORDER = [10, 3, 11, 5, 8, 1, 9, 6, 2, 7, 4, 0];   // flower indices, shuffled so neighbours rarely repeat
-const flowerLit = new Float32Array(16);                        // 0..1 how lit each lily is right now
+const flowerLit = new Float32Array(16);
+let moonSpin = 0;                      // moon rotation angle; turns faster in phase 2
+let songT = 0;                         // smoothed song position, for the dance
+const BAR = 4 * 1.0642;                // one bar of the song (4 quarter notes at 56.4 BPM)
+/* phase 2 dance: one smooth left-right sway per bar, eased so it lingers at each side */
+/* phase 2 dance: one smooth left-right sway per bar, eased so it lingers at each side.
+   Its size matches how far the bouquet leans at the peak of a single tap. */
+function danceAt(t){ const x = Math.sin(2 * Math.PI * (t - 58.862) / BAR); return Math.sign(x) * Math.pow(Math.abs(x), 0.8); }
+const TAP_PEAK = Math.tanh(0.5 * 1.2) / 1.2;   // pushAmount() at the top of one tap's lean (~0.45)
 const PUSH_DUR = 2.0;
 function pushCurve(k){ return (k <= 0 || k >= 1) ? 0 : Math.exp(-3.2 * k) * Math.sin(2.6 * Math.PI * k) * (1 - k); }
 function pushAmount(time, delay = 0){
@@ -587,7 +596,8 @@ function sway(f, time){
   const k = CONFIG.sway * (1 - f.y * 0.6);
   const lag = 0.12 * (1 - f.y);         // tops of the stems follow a moment later, like a whip
   const p = pushAmount(time, lag) * 0.03 * CONFIG.pushStrength * (1 - f.y * 0.7);
-  const lean = glow * 0.014 * (1 - f.y * 0.7);       // heads tilt toward the moonlight
+  const lean = glow * 0.014 * (1 - f.y * 0.7)           // heads tilt toward the moon
+             - (p2 > 0 ? p2 * CONFIG.danceSway * TAP_PEAK * 0.03 * CONFIG.pushStrength * (1 - f.y * 0.7) * danceAt(songT - 0.18 * (1 - f.y)) : 0);   // phase 2: heads dance (same reach as a tap)
   return [Math.sin(time * 1.1 + f.phase) * 0.005 * k + p - lean, Math.cos(time * 0.9 + f.phase) * 0.002 * k - lean * 0.3];
 }
 function stemPt(f, t, sx, sy){
@@ -732,7 +742,7 @@ function drawMoon(T, time){
   const fade = easeInOut(prog(T, 0.3, 2.2));
   if (fade <= 0) return;
   const { i0, j0, w, h, cx, cy, R } = MOON;
-  const spin = time * 0.025, cs = Math.cos(spin), sn = Math.sin(spin);
+  const spin = moonSpin, cs = Math.cos(spin), sn = Math.sin(spin);
   const edge = R / cellW * 1.4;
   if (vis > 0.01) drawHalo(fade);
   for (let j = 0; j < h; j++) {
@@ -868,7 +878,8 @@ function drawScene(T, time){
   rSet(S / cellW, 0, 0, S / cellH, CX / cellW, TOP / cellH);
   const sw = (reduceMotion ? 0 : CONFIG.sway * 0.012 * Math.sin(time * 0.7) * prog(T, 1, 2))
            + pushAmount(time) * 0.12 * CONFIG.pushStrength
-           - glow * 0.045;                                   // the whole bouquet leans toward the moon
+           - glow * 0.045                                    // the whole bouquet leans toward the moon
+           + p2 * CONFIG.danceSway * TAP_PEAK * 0.12 * CONFIG.pushStrength * danceAt(songT);   // phase 2: sways like a tap, side to side with the music
   rTranslate(0, 1); rRotate(sw); rTranslate(0, -1);
   const px = cellH / S;   // one character cell, in bouquet units
 
@@ -957,8 +968,8 @@ function onBouquet(cx, cy, rad = 1){
   return false;
 }
 let shooters = [], nextShooter = 0;
-function spawnShooter(time, ox, oy){
-  if (shooters.length > 8) return;
+function spawnShooter(time, ox, oy, side){
+  if (shooters.length > 40) return;
   const big = Math.max(W, H);
   const tail = Math.min(300, Math.max(150, big * (0.15 + Math.random() * 0.1)));
   if (ox != null) {                                  // from a tap: head across the open side of the screen
@@ -967,7 +978,7 @@ function spawnShooter(time, ox, oy){
       speed: big * (0.75 + Math.random() * 0.4), tail, born: time, life: 0.9 + Math.random() * 0.5 });
     return;
   }
-  const fromLeft = Math.random() < 0.5, ang = 0.25 + Math.random() * 0.35;
+  const fromLeft = side != null ? side : Math.random() < 0.5, ang = 0.25 + Math.random() * 0.35;
   shooters.push({
     x: fromLeft ? Math.random() * W * 0.6 : W * 0.4 + Math.random() * W * 0.6,
     y: Math.random() * H * 0.45,
@@ -1042,30 +1053,36 @@ function drawSky(T, time){
   if (CONFIG.shootingStars && T > BLOOM_END - 0.5) {
     if (!nextShooter) nextShooter = time + 0.8;
     if (time >= nextShooter) {
-      spawnShooter(time);
+      if (p2 > 0.5) {                                // phase 2: a meteor-shower burst of 3-6 at once
+        const n = 3 + Math.floor(Math.random() * 4), side = Math.random() < 0.5;
+        for (let i = 0; i < n; i++) spawnShooter(time + Math.random() * 0.35, null, null, side);
+      } else spawnShooter(time);
       const [a, b] = CONFIG.shootingEvery;
-      nextShooter = time + (a + Math.random() * (b - a)) / (p2 > 0.5 ? 2 : 1);   // twice as many after the drop
+      nextShooter = time + (a + Math.random() * (b - a)) / (p2 > 0.5 ? 4 : 1);   // four times as many after the drop
     }
   }
-  shooters = shooters.filter(s => time - s.born < s.life);
+  shooters = shooters.filter(s => time - s.born < s.life);   // (burst members born slightly in the future stay)
   kctx.lineCap = 'round';
   for (const s of shooters) {
     const age = time - s.born, k = age / s.life;
+    if (age < 0) continue;                           // part of a burst that starts a moment later
     const f = Math.sin(Math.PI * Math.min(1, k * 1.15));      // fade in, then burn out
     const hx = (s.x + s.dx * s.speed * age) * dpr, hy = (s.y + s.dy * s.speed * age) * dpr;
     const len = s.tail * dpr * (0.4 + 0.6 * Math.min(1, k * 3));
     const tx = hx - s.dx * len, ty = hy - s.dy * len;
     const g = kctx.createLinearGradient(tx, ty, hx, hy);
     g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.7, `rgba(200,220,255,${(0.35 * f).toFixed(3)})`);
-    g.addColorStop(1, `rgba(255,255,255,${(0.95 * f).toFixed(3)})`);
-    kctx.strokeStyle = g; kctx.lineWidth = 1.6 * dpr;
+    const bright = 1 + 0.6 * p2;                       // brighter after the drop
+    g.addColorStop(0.7, `rgba(200,220,255,${Math.min(1, 0.35 * f * bright).toFixed(3)})`);
+    g.addColorStop(1, `rgba(255,255,255,${Math.min(1, 0.95 * f * bright).toFixed(3)})`);
+    kctx.strokeStyle = g; kctx.lineWidth = (1.6 + 0.8 * p2) * dpr;
     kctx.beginPath(); kctx.moveTo(tx, ty); kctx.lineTo(hx, hy); kctx.stroke();
-    const glow = kctx.createRadialGradient(hx, hy, 0, hx, hy, 5 * dpr);
+    const hr = (5 + 3 * p2) * dpr;
+    const glow = kctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
     glow.addColorStop(0, `rgba(255,255,255,${(0.9 * f).toFixed(3)})`);
     glow.addColorStop(1, 'rgba(255,255,255,0)');
     kctx.fillStyle = glow;
-    kctx.beginPath(); kctx.arc(hx, hy, 5 * dpr, 0, 6.283); kctx.fill();
+    kctx.beginPath(); kctx.arc(hx, hy, hr, 0, 6.283); kctx.fill();
   }
 }
 
@@ -1113,6 +1130,8 @@ function frame(now){
   if (glow < 0.002) glow = 0;
   // phase 2: follow the song (or the timer if there's no music)
   const st = songTime(now, T);
+  songT = st;
+  moonSpin += dtg * (0.025 + 0.22 * p2);         // the moon turns ~10x faster after the drop
   const inDrop = CONFIG.dropPhase && st >= CONFIG.dropAt;
   p2 += ((inDrop ? 1 : 0) - p2) * (1 - Math.exp(-dtg * (inDrop ? 5 : 3)));
   if (p2 < 0.002) p2 = 0;
