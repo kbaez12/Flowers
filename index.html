@@ -64,6 +64,7 @@ const CONFIG = {
   sway: 1,           // 0 = still, 1 = gentle sway
   seed: 7,           // change for a different stem/leaf arrangement
   startText: "tap to bloom",  // shown on the black screen before the animation starts
+  startApple: true,           // bobbing ASCII apple above the start text (false = just the text)
   song: "song.mp3",           // audio file that plays when they tap to bloom ("" = no music)
   songStart: 0,               // start the song this many seconds in
   songVolume: 0.85,
@@ -75,6 +76,11 @@ const CONFIG = {
   moon: true,                 // ASCII moon in the top-left corner
   moonSize: 0.11,             // radius as a fraction of the smaller screen side
   moonlight: true,            // hold the moon: it glows, lights the flowers, and they lean toward it
+  dropPhase: true,            // phase 2 at the song's drop: moonlit sky, glowing flowers lighting up with the piano
+  dropAt: 58.9,               // seconds into the song where the drop hits
+  pianoLights: true,          // after the drop, each piano note lights up one lily (false = off)
+  pianoGlow: 1,               // how bright a lily gets on a note (0.5 = softer, 1.5 = stronger)
+  pianoShift: 0,              // nudge every note earlier (-) or later (+) in seconds, e.g. -0.05
   moonSparkles: 16,           // white 4-point sparkles that appear in the sky while the moon is held (0 = none)
 };
 
@@ -401,6 +407,7 @@ resize();
    Coordinates go through a 2D transform M, just like canvas.
    ============================================================ */
 let M = [1, 0, 0, 1, 0, 0];
+let GA = 1;                 // global alpha for everything painted (used to fade the apple out)
 const MSTACK = [];
 function rSet(a, b, c, d, e, f){ M = [a, b, c, d, e, f]; }
 function rSave(){ MSTACK.push(M.slice()); }
@@ -499,7 +506,7 @@ function fillEdges(shade, cr, cg, cb, ca){
       if (c > 1) c = 1;
       let r = cr, g = cg, b = cb, a = ca;
       if (shade) { shade(x + 0.5, j + 0.5); r = SH[0]; g = SH[1]; b = SH[2]; a = SH[3]; }
-      a *= c;
+      a *= c * GA;
       if (a <= 0.003) continue;
       const k = (j * cols + x) * 4, ia = 1 - a;
       buf[k] = r * a + buf[k] * ia;
@@ -559,7 +566,15 @@ const mulC = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
 /* Touch push: lean away from the finger, spring back past centre a little, settle.
    Taps stack: each one adds its own sway, softly limited so spamming can't over-bend it. */
 let pushes = [];                       // [{ start, dir }]
-let glow = 0;                          // 0..1 moonlight, eased toward its target each frame
+let glow = 0;                          // 0..1 holding the moon (drives the lean + the visuals)
+let p2 = 0;                            // 0..1 phase 2 (after the drop): drives the visuals only
+let vis = 0;                           // what's shown: max(glow, p2)
+/* Piano notes after the drop: [seconds into the song, strength]. Built from the sheet music's top line
+   (starting at the drop bar: 5 bars of quarter notes, then a bar of 2 quarters + 4 eighths, repeating),
+   at the song's real tempo (56.4 BPM), checked against the piano in the audio. Each note lights the next lily. */
+const PIANO_NOTES = [[58.862, 1.0], [59.926, 0.82], [60.99, 0.82], [62.054, 0.82], [63.119, 1.0], [64.183, 0.82], [65.247, 0.82], [66.311, 0.82], [67.375, 1.0], [68.439, 0.82], [69.504, 0.82], [70.568, 0.82], [71.632, 1.0], [72.696, 0.82], [73.76, 0.82], [74.824, 0.82], [75.889, 1.0], [76.953, 0.82], [78.017, 0.82], [79.081, 0.82], [80.145, 1.0], [81.209, 0.82], [82.274, 0.82], [82.806, 0.62], [83.338, 0.82], [83.87, 0.62], [84.402, 1.0], [85.466, 0.82], [86.53, 0.82], [87.594, 0.82], [88.659, 1.0], [89.723, 0.82], [90.787, 0.82], [91.851, 0.82], [92.915, 1.0], [93.979, 0.82], [95.044, 0.82], [96.108, 0.82], [97.172, 1.0], [98.236, 0.82], [99.3, 0.82], [100.364, 0.82], [101.429, 1.0], [102.493, 0.82], [103.557, 0.82], [104.621, 0.82], [105.685, 1.0], [106.749, 0.82], [107.814, 0.82], [108.346, 0.62], [108.878, 0.82], [109.41, 0.62], [109.942, 1.0], [111.006, 0.82], [112.07, 0.82], [113.134, 0.82], [114.199, 1.0], [115.263, 0.82], [116.327, 0.82], [117.391, 0.82], [118.455, 1.0], [119.519, 0.82], [120.584, 0.82], [121.648, 0.82], [122.712, 1.0], [123.776, 0.82]];
+const LIGHT_ORDER = [10, 3, 11, 5, 8, 1, 9, 6, 2, 7, 4, 0];   // flower indices, shuffled so neighbours rarely repeat
+const flowerLit = new Float32Array(16);                        // 0..1 how lit each lily is right now
 const PUSH_DUR = 2.0;
 function pushCurve(k){ return (k <= 0 || k >= 1) ? 0 : Math.exp(-3.2 * k) * Math.sin(2.6 * Math.PI * k) * (1 - k); }
 function pushAmount(time, delay = 0){
@@ -641,21 +656,23 @@ function drawFlower(f, T, time, px){
   const [sx, sy] = sway(f, time);
   const [fx, fy] = stemPt(f, 1, sx, sy);
   const up = stemAngle(f, 0.98, sx, sy);
-  const k = f.shade;
+  const lit = flowerLit[FLOWERS.indexOf(f)] || 0;       // piano light (phase 2)
+  const k = f.shade * (1 + 0.55 * lit);                 // brighter while lit
+  const lift = 1 + 0.035 * lit;                         // opens a touch, very subtle
   const c = {};
   for (const key of ['petal','throat','tip','edge','vein']) c[key] = mulC(mix(f.b[key], f.c[key], oc), k);
   c.spot = f.c.spot ? mulC(f.c.spot, k) : null;
   const spotRng = mulberry32(f.spotSeed);
 
-  rSave(); rTranslate(fx, fy);
+  rSave(); rTranslate(fx, fy - 0.012 * lit);           // and rises slightly
   for (const pass of [[0,2,4],[1,3,5]]) {      // outer petals first, then the wider inner ones
     for (const i of pass) {
       const outer = i % 2 === 0;
       const fin = -Math.PI/2 + f.rotR + i * Math.PI/3;
       const bud = up + (i - 2.5) * 0.05;
       const a = lerpAngle(bud, fin, ob);
-      const L = f.r * (outer ? 1 : 0.93) * lerp(0.42, 1, oc) * budT;
-      const Wd = f.r * (outer ? 0.23 : 0.30) * lerp(0.72, 1, oc) * budT;
+      const L = f.r * (outer ? 1 : 0.93) * lerp(0.42, 1, oc) * budT * lift;
+      const Wd = f.r * (outer ? 0.23 : 0.30) * lerp(0.72, 1, oc) * budT * lift;
       const curl = f.r * 0.07 * f.curlSign[i] * oc;
       rSave(); rRotate(a);
       drawPetal(L, Wd, curl, c, oc, px, spotRng, !!c.spot && bl > 0.4);
@@ -717,7 +734,7 @@ function drawMoon(T, time){
   const { i0, j0, w, h, cx, cy, R } = MOON;
   const spin = time * 0.025, cs = Math.cos(spin), sn = Math.sin(spin);
   const edge = R / cellW * 1.4;
-  if (glow > 0.01) drawHalo(fade);
+  if (vis > 0.01) drawHalo(fade);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
       const x = ((i0 + i + 0.5) * cellW - cx) / R, y = ((j0 + j + 0.5) * cellH - cy) / R;
@@ -730,8 +747,8 @@ function drawMoon(T, time){
       const crater = smooth(0.7, 0.8, noise3(sx * 11, y * 11 + 5, sz * 11));
       const albedo = 1 - 0.34 * seas - 0.16 * (detail - 0.5) - 0.22 * crater;
       const ndl = -0.62 * x - 0.34 * y + 0.71 * z;                 // light from the upper left
-      const lit = Math.max(smooth(-0.1, 0.5, ndl), glow * 0.55);
-      const limb = (0.82 + 0.18 * z) * (1 + 0.3 * glow);
+      const lit = Math.max(smooth(-0.1, 0.5, ndl), vis * 0.55);
+      const limb = (0.82 + 0.18 * z) * (1 + 0.3 * vis);
       const a = clamp((1 - Math.sqrt(d2)) * edge) * fade;
       const k = ((j0 + j) * cols + (i0 + i)) * 4;
       for (let c = 0; c < 3; c++) buf[k + c] = lerp(MOON_DARK[c] * (0.85 + 0.15 * albedo), MOON_LIT[c] * albedo * limb, lit) * a;
@@ -749,7 +766,7 @@ function drawHalo(fade){
     const d = Math.hypot((i + 0.5) * cellW - cx, (j + 0.5) * cellH - cy) / R;
     if (d <= 0.98 || d >= 1.75) continue;
     const t = 1 - (d - 1) / 0.75;
-    const a = glow * fade * 0.42 * t * t;
+    const a = vis * fade * 0.42 * t * t;
     if (a < 0.01) continue;
     const k = (j * cols + i) * 4, ia = 1 - a;
     buf[k] = 205 * a + buf[k] * ia; buf[k+1] = 218 * a + buf[k+1] * ia; buf[k+2] = 255 * a + buf[k+2] * ia;
@@ -759,7 +776,7 @@ function drawHalo(fade){
 
 /* moonlight on the bouquet: a silver wash, strongest on edges that face the moon */
 function applyMoonlight(){
-  if (glow < 0.01 || !MOON) return;
+  if (vis < 0.01 || !MOON) return;
   const mx = MOON.cx / cellW, my = MOON.cy / cellH, keep = (MOON.R * 1.8);
   const far = Math.hypot(cols, rows);
   for (let y = 1; y < rows; y++) {
@@ -771,12 +788,77 @@ function applyMoonlight(){
       // is the neighbour on the moon side empty? then this cell is a lit edge
       const up = buf[((y - 1) * cols + x) * 4 + 3], left = buf[(y * cols + x - 1) * 4 + 3], diag = buf[((y - 1) * cols + x - 1) * 4 + 3];
       const rim = (up < 0.035 || left < 0.035 || diag < 0.035) ? 1 : 0;
-      const m = glow * (0.05 + 0.1 * near + 0.6 * rim);
+      const m = vis * (0.05 + 0.1 * near + 0.6 * rim);
       buf[k]     += (226 * a - buf[k]) * m;
       buf[k + 1] += (234 * a - buf[k + 1]) * m;
       buf[k + 2] += (255 * a - buf[k + 2]) * m;
     }
   }
+}
+
+/* ---------- Start screen: a red ASCII apple, bobbing above "tap to bloom" ---------- */
+const APPLE_RED = [196, 22, 34], APPLE_DARK = [74, 4, 14], APPLE_SHINE = [255, 236, 222];
+const APPLE_LEAF = [[0, hex('#2f6e22')], [0.55, hex('#5aa33a')], [1, hex('#8fcf5a')]];
+function appleOutline(R){
+  const pts = [];
+  for (let i = 0; i < 48; i++) {
+    const t = i / 48 * Math.PI * 2, c = Math.cos(t);
+    let x = R * Math.sin(t) * (1 + 0.07 * c), y = -R * 0.93 * c;
+    if (c > 0) y += R * 0.26 * Math.exp(-((x / (R * 0.3)) ** 2)) * c;        // dip where the stem sits
+    else y -= R * 0.07 * Math.exp(-((x / (R * 0.32)) ** 2)) * -c;            // small dip underneath
+    pts.push(x, y);
+  }
+  return pts;
+}
+function drawApple(time, alpha){
+  if (!CONFIG.startApple || alpha <= 0) return;
+  const R = Math.max(38, Math.min(110, Math.min(W, H) * 0.17));
+  const bob = Math.sin(time * 2.1);
+  const cx = W / 2, cy = H / 2 - R * 1.55 + bob * R * 0.1;
+  GA = alpha;
+  rSet(1 / cellW, 0, 0, 1 / cellH, 0, 0);
+  // soft shadow on the "floor", smaller and fainter when the apple is up
+  rSave(); rTranslate(cx, H / 2 - R * 0.45);
+  const sh = 0.8 + 0.2 * -bob;
+  fillLocal(ellipsePts(0, 0, R * 0.62 * sh, R * 0.08 * sh, 0, 24), null, [92, 70, 64], 0.55 * sh);
+  rRestore();
+
+  rSave(); rTranslate(cx, cy); rRotate(Math.sin(time * 1.05) * 0.05);
+  // body: shaded like a sphere, light from the upper left, with a bright shine
+  const iv = invM();
+  fillLocal(appleOutline(R), (X, Y) => {
+    const lx = iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), ly = iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5]);
+    const nx = lx / R, ny = ly / R, z = Math.sqrt(Math.max(0, 1 - nx * nx * 0.9 - ny * ny * 0.9));
+    const diff = Math.max(0, -0.5 * nx - 0.5 * ny + 0.7 * z);
+    const shine = Math.exp(-(((nx + 0.42) ** 2) / 0.018 + ((ny + 0.3) ** 2) / 0.03));
+    const streak = 0.92 + 0.08 * Math.sin(nx * 17 + Math.sin(ny * 5) * 2);     // faint vertical streaks
+    const k = Math.min(1, diff * 1.25) * streak;
+    SH[0] = lerp(APPLE_DARK[0], APPLE_RED[0], k) + (APPLE_SHINE[0] - APPLE_RED[0]) * shine * 0.85;
+    SH[1] = lerp(APPLE_DARK[1], APPLE_RED[1], k) + (APPLE_SHINE[1] - APPLE_RED[1]) * shine * 0.85;
+    SH[2] = lerp(APPLE_DARK[2], APPLE_RED[2], k) + (APPLE_SHINE[2] - APPLE_RED[2]) * shine * 0.85;
+    SH[3] = 1;
+  });
+  // stem
+  strokeLocal(quadPts(0, -R * 0.62, R * 0.02, -R * 0.9, R * 0.16, -R * 1.12, 8), R * 0.07, false, [120, 70, 34]);
+  strokeLocal(quadPts(0, -R * 0.62, R * 0.02, -R * 0.9, R * 0.16, -R * 1.12, 8), R * 0.025, false, [176, 118, 62]);
+  // leaf
+  rSave(); rTranslate(R * 0.08, -R * 0.8); rRotate(-0.42);
+  const L = R * 0.9, Wd = R * 0.24;
+  const leaf = [0, 0];
+  cubicTo(leaf, 0, 0, L * 0.25, -Wd * 1.2, L * 0.7, -Wd * 0.9, L, -Wd * 0.05, 10);
+  cubicTo(leaf, L, -Wd * 0.05, L * 0.7, Wd * 0.8, L * 0.3, Wd * 1.0, 0, 0, 10);
+  leaf.length -= 2;
+  fillLocal(leaf, gradX(L, APPLE_LEAF));
+  strokeLocal(leaf, R * 0.02, true, [30, 70, 24]);
+  strokeLocal([L * 0.04, 0, L * 0.95, -Wd * 0.05], R * 0.02, false, [170, 220, 120]);
+  for (let i = 1; i <= 4; i++) {                       // side veins
+    const vx = L * (0.15 + i * 0.17);
+    strokeLocal([vx, 0, vx + L * 0.1, -Wd * (0.7 - i * 0.08)], R * 0.015, false, [140, 200, 100], 0.7);
+    strokeLocal([vx, 0, vx + L * 0.1, Wd * (0.62 - i * 0.08)], R * 0.015, false, [140, 200, 100], 0.7);
+  }
+  rRestore();
+  rRestore();
+  GA = 1;
 }
 
 function drawScene(T, time){
@@ -812,6 +894,7 @@ function drawScene(T, time){
     }
   }
   for (const f of FLOWERS) drawFlower(f, T, time, px);   // buds and blooms, back to front
+  if (T < 0.8) drawApple(time, 1 - T / 0.8);              // the start apple fades as the bloom begins
   applyMoonlight();
 }
 
@@ -916,9 +999,9 @@ const SPARK = document.createElement('canvas');
   arms(L, Lh, grad, 14);
   arms(L * 0.45, Lh * 0.45, '#ffffff', 6);          // bright core
 })();
-function sparkleK(sp){ return smooth(0, 1, (glow - sp.order * (0.5 / Math.max(1, sparkles.length))) / 0.5); }
+function sparkleK(sp){ return smooth(0, 1, (vis - sp.order * (0.5 / Math.max(1, sparkles.length))) / 0.5); }
 function drawSparkles(time){
-  if (glow < 0.02 || !sparkles.length) return;
+  if (vis < 0.02 || !sparkles.length) return;
   kctx.save();
   kctx.globalCompositeOperation = 'lighter';
   for (const sp of sparkles) {
@@ -940,7 +1023,7 @@ function drawSky(T, time){
   // stars
   const fade = prog(T, BLOOM_END - 1.6, 1.8);
   if (fade > 0) {
-    const s = Math.max(1, Math.round(dpr * 1.4 * (1 + 0.5 * glow)));
+    const s = Math.max(1, Math.round(dpr * 1.4 * (1 + 0.5 * vis)));
     kctx.fillStyle = '#fff';
     for (const st of stars) {
       if (T < BLOOM_END - 1.6 + st.d) continue;
@@ -948,7 +1031,7 @@ function drawSky(T, time){
       const tw = 0.5 + 0.5 * Math.sin(time * st.sp + st.ph);
       const hide = st.under >= 0 && sparkles[st.under] ? sparkleK(sparkles[st.under]) : 0;
       if (hide > 0.98) continue;
-      kctx.globalAlpha = Math.min(1, fade * ((0.15 + 0.85 * tw * tw * tw) * (1 + 1.3 * glow) + 0.25 * glow)) * (1 - hide);
+      kctx.globalAlpha = Math.min(1, fade * ((0.15 + 0.85 * tw * tw * tw) * (1 + 1.3 * vis) + 0.25 * vis)) * (1 - hide);
       kctx.fillRect(Math.round(st.x * dpr), Math.round(st.y * dpr), s, s);
     }
     kctx.globalAlpha = 1;
@@ -961,7 +1044,7 @@ function drawSky(T, time){
     if (time >= nextShooter) {
       spawnShooter(time);
       const [a, b] = CONFIG.shootingEvery;
-      nextShooter = time + a + Math.random() * (b - a);
+      nextShooter = time + (a + Math.random() * (b - a)) / (p2 > 0.5 ? 2 : 1);   // twice as many after the drop
     }
   }
   shooters = shooters.filter(s => time - s.born < s.life);
@@ -1005,11 +1088,22 @@ function adapt(now){
   lastNow = now;
 }
 let lastDraw = 0, uiDirty = false;
+/* smooth song position: audio.currentTime only updates a few times a second on some phones */
+let songStamp = 0, songLast = -1;
+function songTime(now, T){
+  if (!audio || audio.paused) return audio ? audio.currentTime : T + (CONFIG.songStart || 0);
+  const ct = audio.currentTime;
+  if (ct !== songLast) { songLast = ct; songStamp = now; }
+  return ct + Math.min(0.35, (now - songStamp) / 1000);
+}
 function frame(now){
   requestAnimationFrame(frame);
   if (MIN_FRAME_MS && now - lastDraw < MIN_FRAME_MS) return;
   lastDraw = now;
-  if (!started) return;
+  if (!started) {                                       // start screen: just the bobbing apple
+    if (CONFIG.startApple) { buf.fill(0); drawApple(now / 1000, 1); asciiPass(); }
+    return;
+  }
   adapt(now);
   const T = (now - t0) / 1000 * CONFIG.speed;
   const time = now / 1000;
@@ -1017,6 +1111,23 @@ function frame(now){
   const dtg = Math.min(0.1, (now - (frame.prev || now)) / 1000); frame.prev = now;
   glow += ((holdingMoon ? 1 : 0) - glow) * (1 - Math.exp(-dtg * (holdingMoon ? 3.2 : 1.6)));
   if (glow < 0.002) glow = 0;
+  // phase 2: follow the song (or the timer if there's no music)
+  const st = songTime(now, T);
+  const inDrop = CONFIG.dropPhase && st >= CONFIG.dropAt;
+  p2 += ((inDrop ? 1 : 0) - p2) * (1 - Math.exp(-dtg * (inDrop ? 5 : 3)));
+  if (p2 < 0.002) p2 = 0;
+  vis = Math.max(glow, p2);
+  flowerLit.fill(0);
+  if (CONFIG.pianoLights && p2 > 0) {
+    for (let i = 0; i < PIANO_NOTES.length; i++) {
+      const dt = st - (PIANO_NOTES[i][0] + CONFIG.pianoShift);
+      if (dt < 0) break;
+      if (dt > 2.5) continue;
+      const env = dt < 0.09 ? dt / 0.09 : Math.exp(-(dt - 0.09) * 2.3);   // soft attack, gentle fade
+      const fi = LIGHT_ORDER[i % LIGHT_ORDER.length];
+      flowerLit[fi] = Math.max(flowerLit[fi], Math.min(1, env * (0.5 + 0.5 * PIANO_NOTES[i][1]) * CONFIG.pianoGlow) * p2);
+    }
+  }
   drawScene(T, time);
   asciiPass();
   drawSky(T, time);
@@ -1077,7 +1188,7 @@ function begin(e){
   if (e && e.cancelable) e.preventDefault();
   if (!started) { started = true; startEl.classList.add('gone'); }
   t0 = performance.now() - (reduceMotion ? 60000 : 0);
-  shooters = []; nextShooter = 0; pushes = []; glow = 0;
+  shooters = []; nextShooter = 0; pushes = []; glow = 0; p2 = 0; vis = 0; flowerLit.fill(0); songLast = -1;
   playSong();
   msgEl.classList.remove('show'); hintEl.classList.remove('show');
 }
