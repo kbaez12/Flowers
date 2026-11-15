@@ -12,6 +12,11 @@
   body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   #ui { pointer-events: auto; cursor: pointer; touch-action: none; }
+  #endmsg {
+    position: fixed; left: 0; right: 0; top: 34%; padding: 0 28px; text-align: center; pointer-events: none;
+    color: #f7f2ea; font: italic 400 clamp(24px, 6.4vw, 44px)/1.3 Georgia, "Times New Roman", serif;
+    letter-spacing: .02em; opacity: 0; text-shadow: 0 0 22px rgba(255,255,255,.35);
+  }
   #msg {
     position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + max(36px, 5.5vh));
     padding: 0 max(24px, env(safe-area-inset-left, 0px)) 0 max(24px, env(safe-area-inset-right, 0px));
@@ -50,6 +55,7 @@
 <canvas id="ui"></canvas>
 <div id="start"><span></span></div>
 <div id="msg"></div>
+<div id="endmsg"></div>
 <button id="sound" aria-label="Mute music">&#9835;</button>
 <div id="hint">touch the flowers &middot; hold the moon</div>
 <script>
@@ -68,11 +74,14 @@ const CONFIG = {
   song: "song.mp3",           // audio file that plays when they tap to bloom ("" = no music)
   songStart: 0,               // start the song this many seconds in
   songVolume: 0.85,
-  songLoop: true,             // keep repeating when the song ends (false = play once)
+  songLoop: false,            // the ending returns to the apple screen when the song finishes
   shootingStars: true,        // streaks across the sky once the bouquet has bloomed
   shootingEvery: [2.5, 6],    // seconds between shooting stars (min, max)
   pushStrength: 1,            // how far the bouquet leans away when touched
   holdSeconds: 3,             // press and hold this long anywhere to replay
+  ending: true,               // in the song's silent last 13s: fade to black, white roses, message, then back to the apple
+  endingAt: 112.2,            // seconds into the song where the music has faded out
+  endingMessage: "Thank you for being you habibi",
   skyDrawing: true,           // drag a finger across the night sky to draw a glowing line (stays 3s, then erases start-to-end)
   moon: true,                 // ASCII moon in the top-left corner
   moonSize: 0.11,             // radius as a fraction of the smaller screen side
@@ -351,6 +360,7 @@ function resize(){
   MOON.w = Math.min(cols - MOON.i0, Math.ceil(2 * mR / cellW) + 3);
   MOON.h = Math.min(rows - MOON.j0, Math.ceil(2 * mR / cellH) + 3);
 
+  buildField();
   const sr = mulberry32(5);
   stars = [];
   for (let i = 0; i < CONFIG.stars; i++) {
@@ -930,6 +940,98 @@ function drawAppleIntro(u, time){
   }
 }
 
+/* ---------- Ending: a field of white ASCII roses along the bottom ---------- */
+const ROSE_W = [250, 248, 244], ROSE_SH = [150, 152, 172], ROSE_CREAM = [255, 244, 222];
+const GRASS_A = [34, 96, 44], GRASS_B = [92, 168, 78];
+var ROSES = [], GRASS = [];         // var: filled by resize(), which runs before this line
+function buildField(){
+  const r = mulberry32(77);
+  const n = Math.round(Math.max(8, Math.min(26, W / 42)));
+  ROSES = [];
+  for (let i = 0; i < n * 2; i++) {                          // two rows: back (small, higher) and front (big, lower)
+    const depth = i < n ? r() * 0.45 : 0.55 + r() * 0.45;
+    const slot = (i % n + 0.15 + r() * 0.7) / n;
+    ROSES.push({ x: slot * W, depth, ph: r() * 6.28, rot: (r() - 0.5) * 0.9, lean: (r() - 0.5) * 0.3, grow: r() * 1.4 });
+  }
+  ROSES.sort((a, b) => a.depth - b.depth);
+  GRASS = [];
+  for (let i = 0; i < Math.round(W / 6); i++) GRASS.push({ x: r() * W, h: 0.05 + r() * 0.12, bend: (r() - 0.5) * 0.5, c: r(), ph: r() * 6.28 });
+}
+function localOf(iv, X, Y){ return [iv[0] * (X - iv[4]) + iv[2] * (Y - iv[5]), iv[1] * (X - iv[4]) + iv[3] * (Y - iv[5])]; }
+function rosePetal(cx, cy, rx, ry, a, k, edgeW){
+  const pts = ellipsePts(cx, cy, rx, ry, a, 14), iv = invM(), ca = Math.cos(a), sa = Math.sin(a);
+  fillLocal(pts, (X, Y) => {
+    const [lx, ly] = localOf(iv, X, Y), dx = lx - cx, dy = ly - cy;
+    const u = (dx * ca + dy * sa) / rx, v = (-dx * sa + dy * ca) / ry, d = Math.min(1, Math.hypot(u, v));
+    const t = smooth(0.45, 1, d) * 0.85 + (u < 0 ? 0.12 : 0);            // shaded edge, inner side a bit darker
+    SH[0] = lerp(ROSE_W[0], ROSE_SH[0], t) * k; SH[1] = lerp(ROSE_W[1], ROSE_SH[1], t) * k; SH[2] = lerp(ROSE_W[2], ROSE_SH[2], t) * k; SH[3] = 1;
+  });
+  strokeLocal(pts, edgeW, true, mulC(ROSE_SH, 0.75 * k));
+}
+function drawRose(x, y, R, rot, k, open){
+  rSave(); rTranslate(x, y); rRotate(rot);
+  const ew = R * 0.04, s = 0.6 + 0.4 * open;
+  for (let i = 0; i < 5; i++) { const a = i * 1.2566 + 0.3; rosePetal(Math.cos(a) * R * 0.42 * s, Math.sin(a) * R * 0.36 * s, R * 0.52 * s, R * 0.4 * s, a, k * 0.9, ew); }
+  for (let i = 0; i < 5; i++) { const a = i * 1.2566 + 0.93; rosePetal(Math.cos(a) * R * 0.24 * s, Math.sin(a) * R * 0.2 * s, R * 0.38 * s, R * 0.3 * s, a, k, ew); }
+  const iv = invM(), cr = R * 0.27 * s;
+  fillLocal(ellipsePts(0, 0, cr, cr * 0.92, 0, 16), (X, Y) => {             // cream heart of the rose
+    const [lx, ly] = localOf(iv, X, Y), t = Math.min(1, Math.hypot(lx, ly) / cr);
+    SH[0] = lerp(ROSE_CREAM[0], ROSE_W[0], t) * k; SH[1] = lerp(ROSE_CREAM[1], ROSE_W[1], t) * k; SH[2] = lerp(ROSE_CREAM[2], ROSE_W[2], t) * k; SH[3] = 1;
+  });
+  const sp = [];                                                            // the tight spiral in the middle
+  for (let i = 0; i <= 26; i++) { const t = i / 26 * Math.PI * 3.4, rr = cr * 0.95 * (1 - i / 28); sp.push(Math.cos(t) * rr, Math.sin(t) * rr * 0.9); }
+  strokeLocal(sp, R * 0.035, false, mulC(ROSE_SH, 0.7 * k));
+  rRestore();
+}
+function drawRoseField(time, alpha, grow){
+  if (alpha <= 0.002) return;
+  GA = alpha;
+  rSet(1 / cellW, 0, 0, 1 / cellH, 0, 0);
+  const base = Math.min(W, H);
+  for (const g of GRASS) {                                                 // grass first, behind the roses
+    const h = g.h * H * grow, sw = Math.sin(time * 0.9 + g.ph) * 6;
+    strokeLocal(quadPts(g.x, H + 4, g.x + g.bend * h * 0.5 + sw * 0.5, H - h * 0.55, g.x + g.bend * h + sw, H - h, 6),
+      2.2, false, mix(GRASS_A, GRASS_B, g.c));
+  }
+  for (const ro of ROSES) {
+    const R = Math.min(48, base * lerp(0.038, 0.075, ro.depth));
+    const g = smooth(0, 1, (grow * 1.6 - ro.grow * 0.25));                // roses come up a little out of sync
+    if (g <= 0) continue;
+    const k = lerp(0.62, 1, ro.depth);
+    const hx = ro.x + Math.sin(time * 0.8 + ro.ph) * R * 0.15;
+    const hy = H - lerp(0.24, 0.085, ro.depth) * H + (1 - g) * R * 2.2;
+    // stem + a leaf
+    const stem = quadPts(hx, hy + R * 0.3, hx + ro.lean * R * 2, hy + (H - hy) * 0.55, ro.x + ro.lean * R * 3, H + 6, 8);
+    strokeLocal(stem, Math.max(2, R * 0.12), false, mulC([52, 122, 56], k));
+    const ly = hy + (H - hy) * 0.45, lx = hx + ro.lean * R * 1.6;
+    rSave(); rTranslate(lx, ly); rRotate(ro.lean > 0 ? -0.6 : -2.5);
+    const L = R * 0.9, Wd = R * 0.28, leaf = [0, 0];
+    cubicTo(leaf, 0, 0, L * 0.3, -Wd, L * 0.7, -Wd * 0.8, L, 0, 7);
+    cubicTo(leaf, L, 0, L * 0.7, Wd * 0.8, L * 0.3, Wd, 0, 0, 7);
+    leaf.length -= 2;
+    fillLocal(leaf, null, mulC([64, 140, 64], k));
+    rRestore();
+    drawRose(hx, hy, R * (0.5 + 0.5 * g), ro.rot + Math.sin(time * 0.6 + ro.ph) * 0.06, k, g);
+  }
+  GA = 1;
+}
+
+/* where we are in the ending (seconds since the music faded), or -1 */
+let endU = -1, endFinished = false;
+const endMsgEl = document.getElementById('endmsg');
+endMsgEl.textContent = CONFIG.endingMessage;
+function applyEnding(time){
+  const E = smooth(0, 8, endU);                           // slow fade to black
+  const out = smooth(10, 13, endU);                       // last 3 seconds: hand over to the apple
+  if (E > 0) {                                            // dim everything already painted (flowers, moon)
+    const k = 1 - E;
+    for (let i = 0; i < buf.length; i++) buf[i] *= k;
+  }
+  drawRoseField(time, smooth(1.5, 7.5, endU) * (1 - out), smooth(1.5, 8, endU));
+  drawApple(time, smooth(10.9, 13, endU));               // the apple appears once the words have gone
+  endMsgEl.style.opacity = (smooth(3, 7, endU) * (1 - smooth(9.6, 10.9, endU))).toFixed(3);
+}
+
 function drawScene(T, time){
   buf.fill(0);
   drawMoon(T, time);
@@ -1167,7 +1269,7 @@ function drawSky(T, time){
   drawStrokes(time);
   // shooting stars
   if (reduceMotion) return;
-  if (CONFIG.shootingStars && T > BLOOM_END - 0.5) {
+  if (CONFIG.shootingStars && T > BLOOM_END - 0.5 && endU < 0) {
     if (!nextShooter) nextShooter = time + 0.8;
     if (time >= nextShooter) {
       if (p2 > 0.5) {                                // phase 2: a meteor-shower burst of 3-6 at once
@@ -1254,6 +1356,15 @@ function frame(now){
   p2 += ((inDrop ? 1 : 0) - p2) * (1 - Math.exp(-dtg * (inDrop ? 5 : 3)));
   if (p2 < 0.002) p2 = 0;
   vis = Math.max(glow, p2);
+  // ending: once the music has faded out (or the song has finished)
+  const wasEnding = endU >= 0;
+  endU = CONFIG.ending && (st >= CONFIG.endingAt || (audio && audio.ended)) ? Math.max(0, st - CONFIG.endingAt) : -1;
+  if (endU >= 0 && !wasEnding) {                        // just started: tidy up the screen
+    hold = null; liveStroke = null; strokes.forEach(sk => sk.end = sk.end || time);
+    hintEl.classList.remove('show'); msgEl.classList.remove('show'); soundBtn.classList.remove('show');
+    uiDirty = true;
+  }
+  if (endU >= 0 && (endU >= 13 || (audio && audio.ended))) { finishEnding(); return; }
   flowerLit.fill(0);
   if (CONFIG.pianoLights && p2 > 0) {
     for (let i = 0; i < PIANO_NOTES.length; i++) {
@@ -1266,11 +1377,19 @@ function frame(now){
     }
   }
   drawScene(T, time);
+  if (endU >= 0) applyEnding(time);
   asciiPass();
   drawSky(T, time);
+  if (endU >= 0) {                                       // fade the sky (stars, moonlight sparkles) to black too
+    kctx.setTransform(1, 0, 0, 1, 0, 0);
+    kctx.globalCompositeOperation = 'destination-out';
+    kctx.fillStyle = `rgba(0,0,0,${smooth(0, 8, endU).toFixed(3)})`;
+    kctx.fillRect(0, 0, skyCv.width, skyCv.height);
+    kctx.globalCompositeOperation = 'source-over';
+  }
   drawHoldRing(now);
   if (!started) return;                                 // the hold just sent us back to the apple screen
-  if (T > BLOOM_END + 0.3) {
+  if (T > BLOOM_END + 0.3 && endU < 0) {
     if (CONFIG.message) msgEl.classList.add('show');
     hintEl.classList.add('show');
     const which = Math.floor((T - BLOOM_END) / 5) % 2;      // alternate the two hints every 5s
@@ -1324,6 +1443,12 @@ document.addEventListener('visibilitychange', () => {   // pause when they leave
 
 /* hold-to-replay: go all the way back to the apple screen */
 let justReset = false;                 // ignore the lift of the finger that did the reset
+function finishEnding(){
+  backToStart();
+  justReset = false;
+  endU = -1;
+  endMsgEl.style.opacity = '0';
+}
 function backToStart(){
   started = false; justReset = true;
   hold = null; strokes = []; liveStroke = null; shooters = []; nextShooter = 0; pushes = [];
@@ -1334,6 +1459,7 @@ function backToStart(){
   msgEl.classList.remove('show'); hintEl.classList.remove('show'); hintEl._w = null;
   kctx.setTransform(1, 0, 0, 1, 0, 0); kctx.clearRect(0, 0, skyCv.width, skyCv.height);
   startEl.classList.remove('gone');
+  endMsgEl.style.opacity = '0'; endU = -1;
 }
 
 function begin(e){
@@ -1399,7 +1525,7 @@ function drawHoldRing(now){
 }
 
 ui.addEventListener('pointerdown', (e) => {
-  if (!started) return;
+  if (!started || endU >= 0) return;               // no interaction during the ending
   const moon = !!MOON && Math.hypot(e.clientX - MOON.cx, e.clientY - MOON.cy) < MOON.R * 1.25;
   // can this touch draw? only if it starts on open sky (not on the flowers or the moon)
   const fingerCells = Math.max(1, Math.round(10 * dpr / gh));
