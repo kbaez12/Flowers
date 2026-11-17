@@ -1,0 +1,1829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#62b84a">
+<title>Our Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #1d3a1f; overflow: hidden; overscroll-behavior: none; }
+  body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: pointer; }
+  .pix { font-family: "Press Start 2P", ui-monospace, Menlo, monospace; }
+  #banner {
+    position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translateX(-50%);
+    width: min(92vw, 520px); box-sizing: border-box; padding: 10px 12px; text-align: center;
+    color: #fff8e6; font-size: clamp(8px, 2.5vw, 12px); line-height: 1.7;
+    background: rgba(28, 40, 26, 0.82); border: 3px solid #f1d58b; border-radius: 4px;
+    box-shadow: 0 3px 0 #0e1a0e; pointer-events: none; transition: opacity .4s;
+  }
+  #banner b { color: #ffd76a; font-weight: normal; }
+  #bubble {
+    position: fixed; padding: 6px 8px; font-size: 8px; line-height: 1.6; color: #2a1d14; background: #fffaf0;
+    border: 2px solid #2a1d14; border-radius: 3px; pointer-events: none; white-space: nowrap;
+    transform: translate(-50%, -100%); opacity: 0; transition: opacity .25s;
+  }
+  #bubble:after { content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -5px; border: 5px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
+  #end {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14vh); gap: 16px; box-sizing: border-box; pointer-events: none; opacity: 0; transition: opacity 1.6s;
+    color: #fff3d6; text-align: center; text-shadow: 0 2px 0 #1a1030, 0 0 14px rgba(255,215,120,.5);
+  }
+  #end.show { opacity: 1; }
+  #end.show #again { pointer-events: auto; }   /* only tappable once the ending is showing */
+  #end h1 { margin: 0; font-size: clamp(16px, 5.2vw, 28px); font-weight: normal; }
+  #end p { margin: 0; font-size: clamp(8px, 2.6vw, 12px); line-height: 1.8; color: #ffe3a6; }
+  #card {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: rgba(10, 18, 10, 0.55); opacity: 0; pointer-events: none; transition: opacity .35s;
+  }
+  #card.show { opacity: 1; pointer-events: auto; }
+  #card .paper {
+    width: min(84vw, 340px); box-sizing: border-box; padding: 22px 18px 16px; text-align: center;
+    background: #fff8e6; color: #2a1d14; border: 4px solid #2a1d14; border-radius: 4px; box-shadow: 0 5px 0 #2a1d14;
+    transform: scale(.85); transition: transform .35s cubic-bezier(.2,1.6,.4,1);
+  }
+  #card.show .paper { transform: scale(1); }
+  #card .pic { display: none; width: 96px; height: 60px; margin: 0 auto 12px; image-rendering: pixelated; }
+  #card.fish .pic { display: block; }
+  #meter {
+    position: fixed; right: calc(env(safe-area-inset-right, 0px) + 22px); top: 50%; transform: translateY(-50%) scale(.8);
+    display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; opacity: 0; transition: opacity .2s, transform .2s;
+  }
+  #meter.show { opacity: 1; transform: translateY(-50%) scale(1); }
+  #meter .bar { position: relative; width: 22px; height: 190px; background: linear-gradient(#e84a3c, #b8262a); border: 3px solid #2a1d14; border-radius: 3px; box-shadow: 0 3px 0 #2a1d14; }
+  #meter .zone { position: absolute; left: 0; right: 0; top: 41%; height: 18%; background: #4fd06a; border-top: 2px solid #9ff0a8; border-bottom: 2px solid #2a8a3a; }
+  #meter .mark { position: absolute; left: -8px; width: 32px; height: 6px; margin-top: -3px; background: #fff8e6; border: 2px solid #2a1d14; border-radius: 2px; }
+  #meter .hint { font-size: 9px; color: #fff8e6; padding: 5px 7px; background: rgba(28,40,26,.85); border: 2px solid #f1d58b; border-radius: 3px; }
+  #card .from { font-size: 8px; color: #b0405a; letter-spacing: .1em; margin-bottom: 14px; }
+  #card .msg { font-size: clamp(10px, 3.2vw, 13px); line-height: 2; }
+  #card .hearts { margin: 14px 0 12px; color: #ff5d7a; font-size: 12px; letter-spacing: 6px; }
+  #card button { font-size: 9px; padding: 9px 14px; color: #2a1d14; background: #ffd76a; border: 3px solid #2a1d14; border-radius: 3px; box-shadow: 0 3px 0 #2a1d14; cursor: pointer; }
+  #found {
+    position: fixed; left: calc(env(safe-area-inset-left, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    padding: 7px 9px; font-size: 8px; color: #fff8e6; background: rgba(28,40,26,.8); border: 2px solid #f1d58b; border-radius: 3px;
+    pointer-events: none; opacity: 0; transition: opacity .4s;
+  }
+  #found.show { opacity: 1; }
+  #mute {
+    position: fixed; right: calc(env(safe-area-inset-right, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    width: 34px; height: 34px; padding: 0; font-size: 14px; color: #fff8e6; background: rgba(28,40,26,.8);
+    border: 2px solid #f1d58b; border-radius: 3px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .4s;
+  }
+  #mute.show { opacity: 1; pointer-events: auto; }
+  #back {
+    position: fixed; right: calc(env(safe-area-inset-right, 0px) + 52px); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    width: 34px; height: 34px; box-sizing: border-box; font-size: 12px; line-height: 30px; text-align: center; text-decoration: none;
+    color: #fff8e6; background: rgba(28,40,26,.8); border: 2px solid #f1d58b; border-radius: 3px;
+  }
+  #mute.off { color: #7d8a74; text-decoration: line-through; }
+  #again {
+    margin-top: 10px; pointer-events: none; font-size: 10px; padding: 10px 14px; color: #2a1d14; background: #ffd76a;
+    border: 3px solid #2a1d14; border-radius: 3px; box-shadow: 0 3px 0 #2a1d14; cursor: pointer;
+  }
+  #rhythm {
+    position: fixed; left: 50%; width: min(94vw, 420px); height: min(58vh, 470px); transform: translateX(-50%) translateY(12px);
+    display: flex; flex-direction: column; box-sizing: border-box; padding: 8px 8px 10px; gap: 6px;
+    background: rgba(18, 26, 18, 0.62); border: 3px solid #f1d58b; border-radius: 6px; box-shadow: 0 4px 0 rgba(14,26,14,.8);
+    opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s; touch-action: none;
+  }
+  #rhythm.bottom { bottom: calc(env(safe-area-inset-bottom, 0px) + 52px); }   /* clear of the mute button */
+  #rhythm.top { top: calc(env(safe-area-inset-top, 0px) + 10px); }
+  #rhythm.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  #rhythm .bar { display: flex; align-items: center; justify-content: space-between; color: #fff8e6; font-size: 9px; min-height: 22px; }
+  #rhythm .score b { color: #ffd76a; font-weight: normal; }
+  #rhythm .judge { color: #9ff0a8; font-size: 9px; }
+  #rhythm .quit { font-size: 9px; padding: 5px 7px; color: #2a1d14; background: #ffd76a; border: 2px solid #2a1d14; border-radius: 3px; cursor: pointer; }
+  #rhythm canvas { position: static; width: 100%; height: auto; flex: 1; min-height: 0; image-rendering: pixelated; touch-action: none; cursor: default; }
+  #rhythm .pads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  #rhythm .pads button {
+    height: 58px; padding: 0; border: 3px solid #2a1d14; border-radius: 6px; cursor: pointer; touch-action: none;
+    background: #fff8e6 center / 40px 40px no-repeat; image-rendering: pixelated; box-shadow: 0 4px 0 #2a1d14; transition: transform .06s;
+  }
+  #rhythm .pads button.on { transform: translateY(3px); box-shadow: 0 1px 0 #2a1d14; filter: brightness(1.15); }
+  #rhythm .result {
+    position: absolute; inset: 40px 14px 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    text-align: center; color: #fff8e6; font-size: 11px; line-height: 1.8; background: rgba(18, 26, 18, 0.85); border: 3px solid #f1d58b; border-radius: 4px;
+    opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  #rhythm .result.show { opacity: 1; }
+  #rhythm .result b { color: #ffd76a; font-weight: normal; font-size: 14px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="banner" class="pix"></div>
+<div id="bubble" class="pix"></div>
+<div id="card" class="pix"><div class="paper"><div class="from">A LITTLE SURPRISE</div><img class="pic" alt=""><div class="msg"></div><div class="hearts">&#9829; &#9829; &#9829;</div><button class="pix">close</button></div></div>
+<div id="found" class="pix"></div>
+<div id="meter" class="pix"><div class="bar"><div class="zone"></div><div class="mark"></div></div><div class="hint">TAP!</div></div>
+<div id="rhythm" class="pix bottom"><div class="bar"><span class="score">&#9829; <b>0</b></span><span class="judge"></span><button class="quit pix">stop</button></div><canvas></canvas><div class="pads"><button data-l="0" aria-label="red"></button><button data-l="1" aria-label="green"></button><button data-l="2" aria-label="gold"></button><button data-l="3" aria-label="pink"></button></div><div class="result"></div></div>
+<a id="back" class="pix" href="index.html" aria-label="Back to the start">&lt;</a>
+<button id="mute" class="pix" aria-label="Mute">&#9835;</button>
+<div id="end" class="pix"><h1>Our home</h1><p>built together,<br>one piece at a time</p><button id="again" class="pix">build again</button></div>
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const CONFIG = {
+  endTitle: "Our home",
+  endLine: "built together,<br>one piece at a time",
+  walkSpeed: 40,        // pixels per second (in the small pixel world)
+  sound: true,          // pixel sound effects
+  music: "vals.mp3",    // background song, loops ("" = none)
+  musicVolume: 0.35,
+  danceSong: "porti.mp3",   // the song for the dance rhythm game
+  danceVolume: 0.8,
+  // hidden surprises around the ranch: one message each (edit freely)
+  surprises: [
+    "Hello my apple, hope you have a good day!",
+    "You found it! Just a reminder that I'm so proud of you, my apple.",
+    "If you're reading this, I'm probably thinking about you right now.",
+    "Every home needs a heart. Ours is you, my apple.",
+    "Thank you for being you. I love you, apple.",
+    "Hi apple! Drink some water and take a breath. You're doing amazing.",
+    "Look how much you've built today. Proud of you!",
+    "Small steps still count. Keep going, apple.",
+    "You found them all! You're kind of unstoppable, apple.",
+  ],
+  // fishing: one of these with every fish she catches, in order
+  fishMessages: [
+    "Hi apple! Hope today is good to you.",
+    "You caught it! Just a reminder that you're doing great.",
+    "Whatever today brings, you've got this, apple.",
+    "This place feels like home because you're in it.",
+    "Thanks for being you. You make every day better.",
+  ],
+  treatEvery: 14,       // seconds between an apple or carrot appearing in the meadow
+};
+
+/* ============================================================
+   Pixel world size: a small canvas scaled up with crisp pixels
+   ============================================================ */
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const lo = document.createElement('canvas'), g = lo.getContext('2d');   // the pixel world
+const bg = document.createElement('canvas'), bgc = bg.getContext('2d');  // static meadow, drawn once
+let W, H, dpr, IW = 180, IH = 320, SCALE = 2;
+
+function rnd(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => t * t * (3 - 2 * t);
+function px(c, x, y, w = 1, h = 1){ g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); }
+
+/* ============================================================
+   Characters (12 x 20 pixel sprites)
+   ============================================================ */
+/* Chibi style: big head, black outline, dot eyes. 16 x 22 chunky pixels each. */
+const HER_PAL = { O:'#0b0b0d', H:'#231815', h:'#4a342a', S:'#b98058', E:'#140c09', C:'#e58f86', L:'#94464a', B:'#2b2b33', P:'#f6f2e6', N:'#2b2b33', F:'#111114' };
+const HIM_PAL = { O:'#0b0b0d', H:'#17110f', h:'#3d2c24', S:'#b07a52', D:'#b07a52', E:'#140c09', L:'#8a4a3c', K:'#b07a52', T:'#26262d', t:'#3a3a45', B:'#111114', J:'#2a2d38', F:'#f0f0f0' };
+const HER_DOWN = [
+  "....OOOOOOOO....","...OHHHHHHHHO...","..OHHHHhHHHHHO..",".OHHHHHHHHHHHHO.",".OHHHHHHSSHHHHO.",".OHHHSSSSSSSHHO.",
+  ".OHHSSSSSSSSHHO.",".OHHSESSSSESHHO.",".OHHSESSSSESHHO.",".OHHCCSSSSCCHHO.",".OHHSSSLLSSSHHO.",".OHHHSSSSSSHHHO.",
+  ".OHHHOOSSOOHHHO.",".OHHOBPBPBPBOHO.",".OHOBBBBBBBBOHO.",".OOSBBBBBBBBSOO.","...OBBBBBBBBO...","....OBBBBBBO...."];
+const HIM_DOWN = [
+  "...OO.OOOO.OO...","..OHHOHHHHOHHO..",".OHHHHHhHHHHHHO.",".OHHhHHHHHHhHHO.",".OHHHHHHHHHHHHO.",".OHSHHSSSHHHSHO.",
+  ".OSSSSSSSSSSSSO.",".OSSDDSSSSDDSSO.",".OKSSESSSSESSKO.",".OSSSESSSSESSSO.",".OSSSSSLLSSSSSO.","..OSSSSSSSSSSO..",
+  "...OOOSSSSOOO...","..OTTTtBBtTTTO..",".OTTTTTBBTTTTTO.",".OTTTTTtBTTTTTO.",".OSOTTTtTTTTOSO.","...OOTTTTTTOO..."];
+const withRows = (base, rows) => { const o = base.slice(); for (const k in rows) o[k] = rows[k]; return o; };
+const SPR = {
+  her: {
+    down: HER_DOWN,
+    side: withRows(HER_DOWN, { 4:".OHHHHHHHHSSHHO.", 5:".OHHHHHSSSSSSHO.", 6:".OHHHHHSSSSSSSO.", 7:".OHHHHHSSESSESO.", 8:".OHHHHHSSESSESO.", 9:".OHHHHHSSSSCCSO.", 10:".OHHHHHSSSSLLSO.", 11:".OHHHHHHSSSSSHO." }),
+    up: withRows(HER_DOWN, { 4:".OHHHHHHHHHHHHO.", 5:".OHHHHHHHHHHHHO.", 6:".OHHHHhHHHHHHHO.", 7:".OHHHHHHHHHHHHO.", 8:".OHHHHHHHHHHHHO.", 9:".OHHHHHHHHHHHHO.", 10:".OHHHHHHHHHHHHO.", 11:".OHHHHHHHHHHHHO.", 12:".OHHHHHHHHHHHHO.", 13:".OHHHHHHHHHHHHO.", 14:".OBHHHHHHHHHHBO.", 15:".OOSBHHHHHHBSOO." }),
+  },
+  him: {
+    down: HIM_DOWN,
+    side: withRows(HIM_DOWN, { 5:".OHHHHHSSHHHSHO.", 6:".OHHHSSSSSSSSSO.", 7:".OHHHSSSDDSSDDO.", 8:".OHKSSSSESSSESO.", 9:".OHHSSSSESSSESO.", 10:".OHSSSSSSSLLSSO." }),
+    up: withRows(HIM_DOWN, { 5:".OHHHHHHHHHHHHO.", 6:".OHHHHHHHHHHHHO.", 7:".OHHHHHHHHHHHHO.", 8:".OKSHHHHHHHHSKO.", 9:".OSSSHHHHHHSSSO.", 10:".OSSSSSSSSSSSSO.", 13:"..OTTTttttTTTO..", 14:".OTTTTTTTTTTTTO.", 15:".OTTTTTTTTTTTTO." }),
+  },
+};
+// leg poses (4 rows under the body): standing, step A, step B. L = trousers, F = shoes
+const LEGS = [
+  ["....OLLOOLLO....","....OLLOOLLO....","....OFFOOFFO....","....OOO..OOO...."],
+  ["....OLLOOLLO....","....OLLOOFFO....","....OFFO.OOO....","....OOO........."],
+  ["....OLLOOLLO....","....OFFOOLLO....","....OOO.OFFO....",".........OOO...."],
+];
+const SW = 16, SH = 22;
+const sprites = {};      // pre-rendered little canvases
+function buildSprites(){
+  for (const who of ['her', 'him']) {
+    const pal = who === 'her' ? HER_PAL : HIM_PAL, leg = who === 'her' ? 'N' : 'J';
+    for (const dir of ['down', 'up', 'side']) {
+      for (let f = 0; f < 3; f++) {
+        const rows = SPR[who][dir].concat(LEGS[f].map(l => l.replace(/L/g, leg)));
+        const c = document.createElement('canvas'); c.width = SW; c.height = SH;
+        const cc = c.getContext('2d');
+        rows.forEach((row, y) => [...row.padEnd(SW, '.').slice(0, SW)].forEach((ch, x) => {
+          if (ch !== '.' && pal[ch]) { cc.fillStyle = pal[ch]; cc.fillRect(x, y, 1, 1); }
+        }));
+        sprites[`${who}_${dir}_${f}`] = c;
+      }
+    }
+  }
+}
+buildSprites();
+
+/* ============================================================
+   Animals: two horses, two highland cows, a baby pig. They wander the meadow
+   and never walk behind (or through) the house, so they are always visible.
+   ============================================================ */
+function animalSprite(w, h, outline, paint){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cc = c.getContext('2d');
+  paint((col, x, y, ww = 1, hh = 1) => { cc.fillStyle = col; cc.fillRect(x, y, ww, hh); });
+  const im = cc.getImageData(0, 0, w, h), d = im.data, solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
+  const edge = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) edge.push([x, y]);
+  cc.fillStyle = outline; edge.forEach(([x, y]) => cc.fillRect(x, y, 1, 1));
+  return c;
+}
+function legs(P, xs, top, len, col, hoof, f){        // f: 0 stand, 1 / 2 walking
+  const lw = len <= 2 ? 1 : 2;
+  xs.forEach((x, i) => {
+    const lift = f && ((i % 2) === (f - 1)) ? 1 : 0, dx = lift ? 1 : 0;
+    P(col, x + dx, top, lw, len - lift); P(hoof, x + dx, top + len - lift - 1, lw, 1);
+  });
+}
+/* ---------- Horses and highland cows: soft shaded farm-sprite style ----------
+   Drawn with pixels half the size of the characters', outlined in each animal's own darkest tone,
+   with side, front and back views and a 6-frame walk (legs move in diagonal pairs, body bobs, head nods). */
+function sprCanvas(w, h, outline, paint){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cc = c.getContext('2d');
+  paint((col, x, y, ww = 1, hh = 1) => { if (!col) return; cc.fillStyle = col; cc.fillRect(Math.round(x), Math.round(y), ww, hh); });
+  const im = cc.getImageData(0, 0, w, h), d = im.data, solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
+  const edge = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) edge.push([x, y]);
+  cc.fillStyle = outline; edge.forEach(([x, y]) => cc.fillRect(x, y, 1, 1));
+  return c;
+}
+const hashN = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function tone(pal, k, x, y, rough = 0.25){        // k: -1 = top (lit) .. 1 = underside (shade)
+  const v = k + (hashN(x, y) - 0.5) * rough;
+  return v < -0.6 ? pal.h : v < -0.15 ? pal.l : v < 0.4 ? pal.m : pal.d;
+}
+function blobS(P, cx, cy, rx, ry, pw, fn){
+  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+    const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
+    if (Math.abs(nx) ** pw + Math.abs(ny) ** pw <= 1) P(fn(nx, ny, x, y), x, y);
+  }
+}
+function strokeS(P, pts, w0, w1, fn){             // tapering thick polyline; fn(u along, n across, x, y)
+  const seg = []; let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); seg.push(l); total += l; }
+  const n = Math.max(2, Math.ceil(total * 2));
+  for (let s = 0; s <= n; s++) {
+    let d = s / n * total, i = 0; while (i < seg.length - 1 && d > seg[i]) { d -= seg[i]; i++; }
+    const t = seg[i] ? Math.min(1, d / seg[i]) : 0, x = lerp(pts[i][0], pts[i + 1][0], t), y = lerp(pts[i][1], pts[i + 1][1], t);
+    const u = s / n, rr = lerp(w0, w1, u) / 2;
+    for (let yy = Math.floor(y - rr); yy <= Math.ceil(y + rr); yy++) for (let xx = Math.floor(x - rr); xx <= Math.ceil(x + rr); xx++) {
+      const dx = xx + 0.5 - x, dy = yy + 0.5 - y;
+      if (dx * dx + dy * dy <= rr * rr + 0.3) P(fn(u, dx / Math.max(rr, 0.5), xx, yy), xx, yy);
+    }
+  }
+}
+function legSide(P, hx, hy, gy, p, near, pal, idle, w, fetlock){
+  const sw = idle ? 0 : Math.sin(2 * Math.PI * p), lift = idle ? 0 : Math.max(0, Math.cos(2 * Math.PI * p)) * 2.4;
+  const fx = hx + sw * 3.4, fy = gy - lift, kx = (hx + fx) / 2 + lift * 0.9, ky = (hy + fy) / 2;
+  const base = near ? pal.m : pal.d, edge = near ? pal.l : pal.m;
+  strokeS(P, [[hx, hy], [kx, ky], [fx, fy - 2]], w, w - 0.6, (u, n) => n < -0.25 ? edge : base);
+  const x0 = Math.round(fx - w / 2 + 0.3);
+  if (fetlock) P(near ? pal.fet : pal.fetD, x0, Math.round(fy) - 4, w, 2);
+  P(pal.hoof, x0, Math.round(fy) - 2, w, 2);
+}
+function legFront(P, x, top, gy, p, near, pal, idle, w, fetlock){
+  const lift = idle ? 0 : Math.max(0, Math.cos(2 * Math.PI * p)) * 2.2, bot = Math.round(gy - lift);
+  P(near ? pal.m : pal.d, x, top, w, bot - top); P(near ? pal.l : pal.m, x, top, 1, Math.max(0, bot - top - 4));
+  if (fetlock) P(near ? pal.fet : pal.fetD, x, bot - 4, w, 2);
+  P(pal.hoof, x, bot - 2, w, 2);
+}
+const EYE = '#17131a';
+
+function horseSide(pal, t, idle){
+  return sprCanvas(58, 46, pal.o, P => {
+    const GY = 44, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 22 - bob, sw = idle ? 0 : Math.sin(t * Math.PI * 2) * 1.6;
+    strokeS(P, [[14, by - 4], [11 + sw * 0.4, by + 4], [10 + sw, by + 15]], 4.5, 2, (u, n, x, y) => hashN(x, y) < 0.3 ? pal.maneL : pal.mane);   // tail
+    legSide(P, 21, by + 3, GY, t, false, pal, idle, 3, true);         // far back  (pairs with near front)
+    legSide(P, 40, by + 3, GY - 1, t + 0.5, false, pal, idle, 3, true); // far front
+    blobS(P, 19, by - 0.5, 6.5, 7.2, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.95, x, y));    // rump
+    blobS(P, 29, by, 13, 7, 2.8, (nx, ny, x, y) => tone(pal, ny * 0.95, x, y));            // barrel
+    blobS(P, 38, by + 0.5, 5.5, 7, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.9 - 0.1, x, y)); // chest
+    legSide(P, 18, by + 3, GY, t + 0.5, true, pal, idle, 3, true);    // near back
+    legSide(P, 37, by + 3, GY, t, true, pal, idle, 3, true);          // near front
+    strokeS(P, [[37, by - 2], [41, by - 9 + nod * 0.5], [43, by - 14 + nod]], 8, 6, (u, n, x, y) => tone(pal, n * 0.8 - 0.2, x, y));   // neck
+    strokeS(P, [[43, 7 + nod], [48, 10 + nod], [51, 13 + nod]], 6.5, 5, (u, n, x, y) => tone(pal, n * 0.7 - 0.25, x, y));             // head
+    blobS(P, 52, 14.5 + nod, 3.4, 2.9, 2, (nx, ny) => ny > 0.35 ? pal.muzzleD : pal.muzzle);
+    P(pal.o, 54, 14 + nod); P(pal.muzzleD, 50, 16 + nod, 2, 1);
+    P(pal.m, 43, 2 + nod, 2, 3); P(pal.l, 43, 2 + nod); P(pal.d, 45, 3 + nod, 2, 2);      // ears
+    P(EYE, 46, 8 + nod, 2, 2); P('#ffffff', 46, 8 + nod);
+    strokeS(P, [[44, 3 + nod], [41, 8 + nod], [36, by - 7], [32, by - 7]], 4.2, 2.6, (u, n, x, y) => (hashN(x, y) < 0.3 || n < -0.5) ? pal.maneL : pal.mane);   // mane
+    strokeS(P, [[44, 3 + nod], [46, 6 + nod]], 3, 2, () => pal.mane);                                                                 // forelock
+  });
+}
+function horseFront(pal, t, idle){
+  return sprCanvas(32, 46, pal.o, P => {
+    const GY = 44, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 25 - bob;
+    legFront(P, 12, by + 2, GY - 2, t + 0.5, false, pal, idle, 3, true); legFront(P, 17, by + 2, GY - 2, t, false, pal, idle, 3, true);
+    blobS(P, 16, by, 8.5, 8.5, 2.4, (nx, ny, x, y) => tone(pal, ny * 0.9 + Math.abs(nx) * 0.25, x, y));
+    blobS(P, 16, by + 1, 2.2, 3.2, 2, () => pal.muzzle);                          // pale blaze on the chest
+    legFront(P, 10, by + 4, GY, t, true, pal, idle, 3, true); legFront(P, 19, by + 4, GY, t + 0.5, true, pal, idle, 3, true);
+    blobS(P, 16, 12 + nod, 5.2, 8, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.6 + Math.abs(nx) * 0.5 - 0.3, x, y));   // long face
+    blobS(P, 16, 19 + nod, 3.8, 2.8, 2, (nx, ny) => ny > 0.3 ? pal.muzzleD : pal.muzzle);
+    P(pal.o, 14, 19 + nod); P(pal.o, 18, 19 + nod);
+    P(EYE, 11, 10 + nod, 2, 2); P('#ffffff', 11, 10 + nod); P(EYE, 19, 10 + nod, 2, 2); P('#ffffff', 20, 10 + nod);
+    P(pal.m, 10, 2 + nod, 2, 4); P(pal.l, 10, 2 + nod); P(pal.m, 20, 2 + nod, 2, 4); P(pal.l, 21, 2 + nod);
+    strokeS(P, [[16, 2 + nod], [15, 8 + nod]], 4.5, 2.5, (u, n, x, y) => hashN(x, y) < 0.3 ? pal.maneL : pal.mane);
+  });
+}
+function horseBack(pal, t, idle){
+  return sprCanvas(32, 46, pal.o, P => {
+    const GY = 44, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 24 - bob, sw = idle ? 0 : Math.sin(t * Math.PI * 2) * 1.6;
+    legFront(P, 12, by + 2, GY - 2, t, false, pal, idle, 3, true); legFront(P, 17, by + 2, GY - 2, t + 0.5, false, pal, idle, 3, true);
+    blobS(P, 16, 11 + nod, 4.6, 6, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.6 - 0.2, x, y));   // head from behind
+    P(pal.m, 11, 3 + nod, 2, 4); P(pal.m, 19, 3 + nod, 2, 4);
+    strokeS(P, [[16, 4 + nod], [16, by - 5]], 4, 3.4, (u, n, x, y) => hashN(x, y) < 0.3 ? pal.maneL : pal.mane);
+    blobS(P, 16, by, 9, 8.5, 2.4, (nx, ny, x, y) => tone(pal, ny * 0.9 + Math.abs(nx) * 0.2, x, y));   // rump
+    legFront(P, 10, by + 4, GY, t + 0.5, true, pal, idle, 3, true); legFront(P, 19, by + 4, GY, t, true, pal, idle, 3, true);
+    strokeS(P, [[16, by - 5], [16 + sw * 0.4, by + 4], [16 + sw, by + 14]], 4.5, 2, (u, n, x, y) => hashN(x, y) < 0.3 ? pal.maneL : pal.mane);
+  });
+}
+
+function cowSide(pal, t, idle){
+  return sprCanvas(56, 40, pal.o, P => {
+    const GY = 38, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 22 - bob, sw = idle ? 0 : Math.sin(t * Math.PI * 2) * 1.5;
+    strokeS(P, [[10, by - 4], [8 + sw * 0.5, by + 2], [7 + sw, by + 7]], 2, 1.6, () => pal.d);   // tail
+    blobS(P, 7 + sw, by + 9, 2, 2.5, 2, (nx, ny, x, y) => tone(pal, ny - 0.3, x, y, 0.6));
+    legSide(P, 17, by + 5, GY, t, false, pal, idle, 4, false); legSide(P, 34, by + 5, GY - 1, t + 0.5, false, pal, idle, 4, false);
+    blobS(P, 24, by, 15, 8.5, 3.2, (nx, ny, x, y) => tone(pal, ny * 0.9, x, y, 0.55));            // shaggy boxy body
+    for (let x = 11; x < 38; x += 2) { P(pal.d, x, by + 8 + (hashN(x, 1) < 0.5 ? 1 : 0)); P(pal.h, x, by - 9 + (hashN(x, 2) < 0.5 ? 0 : 1)); }   // fringed belly + back
+    legSide(P, 14, by + 5, GY, t + 0.5, true, pal, idle, 4, false); legSide(P, 31, by + 5, GY, t, true, pal, idle, 4, false);
+    blobS(P, 41, 18 + nod, 8.5, 8, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.7 - 0.15, x, y, 0.6));  // big fluffy head
+    strokeS(P, [[46, 11 + nod], [49, 8 + nod], [50, 4 + nod]], 2.6, 1.2, u => u > 0.75 ? '#9a8f80' : '#d9d2c4');   // far horn
+    strokeS(P, [[36, 12 + nod], [33, 9 + nod], [32, 5 + nod]], 3, 1.2, u => u > 0.75 ? '#a89d8d' : '#f1ece0');      // near horn
+    P(EYE, 45, 18 + nod, 2, 1); P('#ffffff', 45, 18 + nod);
+    for (let i = 0; i < 9; i++) {                                                                    // fringe over the eyes
+      const x0 = 35 + i * 1.6, len = 6 + (hashN(i, 7) < 0.5 ? 1 : 2);
+      strokeS(P, [[x0, 11 + nod], [x0 + 0.8 + (hashN(i, 3) - 0.5) * 1.5, 11 + len + nod]], 2, 1, (u, n, x, y) => hashN(x, y) < 0.45 ? pal.fr : pal.h);
+    }
+    blobS(P, 48.5, 22.5 + nod, 4.3, 3.2, 2, (nx, ny) => ny > 0.35 ? '#d6ad9a' : '#f1d9c8');          // muzzle
+    P('#8a5a4e', 48, 22 + nod); P('#8a5a4e', 51, 22 + nod);
+  });
+}
+function cowFront(pal, t, idle){
+  return sprCanvas(34, 40, pal.o, P => {
+    const GY = 38, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 25 - bob;
+    blobS(P, 17, by, 11, 7.5, 2.8, (nx, ny, x, y) => tone(pal, ny * 0.8 + 0.1, x, y, 0.55));       // body behind the head
+    legFront(P, 9, by + 4, GY, t, true, pal, idle, 4, false); legFront(P, 21, by + 4, GY, t + 0.5, true, pal, idle, 4, false);
+    strokeS(P, [[10, 12 + nod], [5, 9 + nod], [3, 4 + nod]], 3, 1.2, u => u > 0.75 ? '#a89d8d' : '#f1ece0');
+    strokeS(P, [[24, 12 + nod], [29, 9 + nod], [31, 4 + nod]], 3, 1.2, u => u > 0.75 ? '#a89d8d' : '#f1ece0');
+    blobS(P, 17, 18 + nod, 9, 8.5, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.6 + Math.abs(nx) * 0.3 - 0.25, x, y, 0.6));
+    P(EYE, 12, 19 + nod, 2, 1); P('#ffffff', 12, 19 + nod); P(EYE, 21, 19 + nod, 2, 1); P('#ffffff', 22, 19 + nod);
+    for (let i = 0; i < 11; i++) {
+      const x0 = 9.5 + i * 1.5, len = 7 + (hashN(i, 5) < 0.5 ? 0 : 1);
+      strokeS(P, [[x0, 10 + nod], [x0 + (hashN(i, 9) - 0.5) * 1.6, 10 + len + nod]], 2, 1, (u, n, x, y) => hashN(x, y) < 0.45 ? pal.fr : pal.h);
+    }
+    blobS(P, 17, 24 + nod, 5, 3.3, 2, (nx, ny) => ny > 0.35 ? '#d6ad9a' : '#f1d9c8');
+    P('#8a5a4e', 15, 24 + nod); P('#8a5a4e', 19, 24 + nod);
+  });
+}
+function cowBack(pal, t, idle){
+  return sprCanvas(34, 40, pal.o, P => {
+    const GY = 38, bob = idle ? 0 : Math.round(Math.abs(Math.sin(t * Math.PI * 2))), nod = idle ? 0 : Math.round(Math.sin(t * Math.PI * 4 + 0.6));
+    const by = 24 - bob, sw = idle ? 0 : Math.sin(t * Math.PI * 2) * 1.5;
+    strokeS(P, [[11, 13 + nod], [6, 10 + nod], [4, 6 + nod]], 3, 1.2, u => u > 0.75 ? '#a89d8d' : '#e6e0d3');
+    strokeS(P, [[23, 13 + nod], [28, 10 + nod], [30, 6 + nod]], 3, 1.2, u => u > 0.75 ? '#a89d8d' : '#e6e0d3');
+    blobS(P, 17, 14 + nod, 7, 5.5, 2.2, (nx, ny, x, y) => tone(pal, ny * 0.6 - 0.2, x, y, 0.6));
+    blobS(P, 17, by, 11, 8.5, 2.8, (nx, ny, x, y) => tone(pal, ny * 0.9 + Math.abs(nx) * 0.2, x, y, 0.55));
+    legFront(P, 9, by + 5, GY, t + 0.5, true, pal, idle, 4, false); legFront(P, 21, by + 5, GY, t, true, pal, idle, 4, false);
+    strokeS(P, [[17, by - 5], [17 + sw * 0.5, by + 3]], 2, 1.6, () => pal.d);
+    blobS(P, 17 + sw, by + 5, 2, 2.5, 2, (nx, ny, x, y) => tone(pal, ny - 0.3, x, y, 0.6));
+  });
+}
+const HORSE_BROWN = { o:'#2a1912', d:'#4b2f24', m:'#63402f', l:'#7c5340', h:'#936550', mane:'#1f2333', maneL:'#3a4259', muzzle:'#e5dbc8', muzzleD:'#bcae96', fet:'#d6ccb8', fetD:'#a89e8b', hoof:'#2b2f3e' };
+const HORSE_BLACK = { o:'#0c0c10', d:'#1a1a20', m:'#26262e', l:'#36363f', h:'#474753', mane:'#0e0e12', maneL:'#2c2c36', muzzle:'#c9c0b2', muzzleD:'#9d9486', fet:'#c9c0b2', fetD:'#8f877a', hoof:'#16161c' };
+const COW_A = { o:'#3a1d0f', d:'#8a4622', m:'#b0602f', l:'#cd7d42', h:'#e6a263', fr:'#efb877', hoof:'#2a1d14' };
+const COW_B = { o:'#2e140a', d:'#6e3419', m:'#94492a', l:'#b2643a', h:'#c98552', fr:'#dba06a', hoof:'#24170f' };
+const WALK_FRAMES = 6;
+function views(side, front, back, pal){                 // [idle, walk 1..6] for each view
+  const mk = fn => [fn(pal, 0, true)].concat(Array.from({ length: WALK_FRAMES }, (_, i) => fn(pal, i / WALK_FRAMES, false)));
+  return { side: mk(side), front: mk(front), back: mk(back) };
+}
+function pigSprite(f){
+  return animalSprite(16, 11, '#0b0b0d', P => {
+    P('#e88fa0', 1, 3, 1, 1); P('#e88fa0', 2, 4, 1, 1);        // curly tail
+    legs(P, [3, 5, 8, 10], 8, 2, '#d77d90', '#8a4a58', f);
+    P('#f6a9b8', 3, 3, 9, 6); P('#e88fa0', 3, 7, 9, 2); P('#fbc4cf', 4, 3, 6, 1);
+    P('#f6a9b8', 10, 2, 4, 6); P('#e88fa0', 10, 1, 2, 1);      // head + ear
+    P('#e88fa0', 13, 4, 2, 3); P('#8a4a58', 14, 5, 1, 1);      // snout
+    P('#0b0b0d', 12, 3, 1, 1);
+  });
+}
+const frames3 = fn => [0, 1, 2].map(fn);
+const ANIMAL_KINDS = [
+  { name: 'horse', dirs: views(horseSide, horseFront, horseBack, HORSE_BROWN), scale: 0.5, speed: 12, cycle: 1.25 },
+  { name: 'black horse', dirs: views(horseSide, horseFront, horseBack, HORSE_BLACK), scale: 0.5, speed: 13, cycle: 1.3 },
+  { name: 'cow', dirs: views(cowSide, cowFront, cowBack, COW_A), scale: 0.5, speed: 7, cycle: 1.1 },
+  { name: 'cow', dirs: views(cowSide, cowFront, cowBack, COW_B), scale: 0.5, speed: 6.5, cycle: 1.05 },
+  { name: 'piglet', dirs: { side: frames3(f => pigSprite(f)) }, scale: 1, speed: 17, cycle: 2.6 },
+];
+let ANIMALS = [];
+let leads = [];                         // the animals she is leading (first one = closest behind her)
+const lead0 = () => leads[0] || null;
+let alertUntil = 0;                     // red "!" over both heads when something gets stolen
+const LABEL = { stones: 'stones', walls: 'bricks', door: 'door', glass: 'window glass', roof: 'shingles', chimney: 'chimney bricks', palm: 'palm', lantern: 'lanterns' };
+
+/* loose animals stay in the open meadow: not on the house, not in the backyard pen, not in the pond */
+function animalBlocked(x, y){
+  if (x < 14 || x > IW - 14 || y > IH - 4) return true;
+  if (y < PEN.y1 + 12) return true;
+  if (Math.abs(x - LOT.cx) < 66 && y < LOT.base + 16) return true;
+  if (((x - POND.x) / (POND.rx + 12)) ** 2 + ((y - POND.y) / (POND.ry + 8)) ** 2 < 1) return true;
+  return false;
+}
+function penInside(x, y){ return x > PEN.x0 + 6 && x < PEN.x1 - 6 && y > PEN.y0 && y < PEN.y1 - 4; }          // counts as "home"
+function penRoam(x, y){ return x > PEN.x0 + 14 && x < PEN.x1 - 14 && y > PEN.y0 + 12 && y < PEN.y1 - 4; }    // where penned animals wander
+function pathClear(x0, y0, x1, y1, blocked){
+  for (let i = 1; i <= 16; i++) if (blocked(lerp(x0, x1, i / 16), lerp(y0, y1, i / 16))) return false;
+  return true;
+}
+const animalPathClear = (x0, y0, x1, y1) => pathClear(x0, y0, x1, y1, animalBlocked);
+function initAnimals(){
+  const starts = [[0.12, 0.74], [0.88, 0.74], [0.34, 0.86], [0.82, 0.92], [0.62, 0.8]].map(([fx, fy]) => {
+    let x = IW * fx, y = IH * fy;
+    for (let n = 0; n < 300 && animalBlocked(x, y); n++) { x = Math.random() * IW; y = IH * (0.55 + Math.random() * 0.45); }
+    return [x, y];
+  });
+  ANIMALS = ANIMAL_KINDS.map((k, i) => ({ k, x: starts[i][0], y: starts[i][1], dir: 'side', tx: null, ty: 0, wait: Math.random() * 3,
+    step: Math.random() * 4, flip: i % 2 === 1, moving: false, cool: k.name === 'piglet' ? 7 : 10 + Math.random() * 10, goal: null, carry: null, leashed: false, penned: false }));
+}
+function faceAnimal(a, dx, dy){
+  a.dir = Math.abs(dx) > Math.abs(dy) * 0.9 ? 'side' : (dy > 0 ? 'front' : 'back');
+  if (Math.abs(dx) > 0.3) a.flip = dx < 0;
+}
+function pickTarget(a){
+  if (a.penned) {
+    a.tx = lerp(PEN.x0 + 16, PEN.x1 - 16, Math.random()); a.ty = lerp(PEN.y0 + 14, PEN.y1 - 6, Math.random()); return;
+  }
+  let best = null, bestD = -1;
+  const fleeing = a.carry && Math.hypot(her.x - a.x, her.y - a.y) < 60;
+  for (let n = 0; n < 14; n++) {
+    const range = a.carry ? 0.5 : 0.7;
+    const tx = a.x + (Math.random() - 0.5) * IW * range, ty = a.y + (Math.random() - 0.5) * IH * (a.carry ? 0.3 : 0.35);
+    if (animalBlocked(tx, ty) || !animalPathClear(a.x, a.y, tx, ty)) continue;
+    if (!fleeing) { best = [tx, ty]; break; }
+    const d = Math.hypot(tx - her.x, ty - her.y);           // a thief runs away from her
+    if (d > bestD) { bestD = d; best = [tx, ty]; }
+  }
+  if (best) { a.tx = best[0]; a.ty = best[1]; }
+}
+/* an animal near a material may grab it and run off with it */
+function steal(a, it){
+  // he puts down what he was carrying (an animal she is leading stays on its leash)
+  if (her.carry) {
+    const c = ITEMS.find(i => i.taken && i.kind === her.carry);
+    if (c) { c.taken = false; c.x = Math.round(clamp(him.x, 10, IW - 10)); c.y = Math.round(Math.max(him.y, PEN.y1 + 14)); }
+    her.carry = null; busy = false; onArrive = null; target = null; route = [];
+  }
+  her.chase = null; alertUntil = performance.now() + 1400;
+  a.carry = it; it.held = a; a.tx = null; a.wait = 0; a.goal = null;
+  bubble.style.opacity = 0; bubbleUntil = 0;                  // let the red "!" show first, then the line
+  setTimeout(() => { if (a.carry === it) say(`Hey! The ${a.k.name} took the ${LABEL[it.kind]}!`, him, 2200); }, 1300);
+  sfx('steal'); setBanner();
+}
+function dropItem(a){
+  const it = a.carry; if (!it) return;
+  it.x = Math.round(a.x); it.y = Math.round(a.y); it.held = null; a.carry = null;
+  a.cool = a.k.name === 'piglet' ? 7 : 25 + Math.random() * 20; a.tx = null; a.wait = 2;
+  if (her.chase === a) { her.chase = null; target = null; route = []; }
+  puff(it.x, it.y - 4, 10, ['#fff6d6', '#ffd76a', '#ffffff']);
+  sfx('drop'); say("Got it back!", her, 1400); setBanner();
+}
+function attachLeash(a, caught){
+  if (a.carry) dropItem(a);
+  if (!leads.includes(a)) leads.push(a); a.leashed = true; a.tx = null;
+  if (her.chase === a || !target) { her.chase = null; target = null; route = []; }   // a thief caught in passing doesn't stop her walk
+  if (leads.length === 1) trail = [her.x, her.y];
+  say(caught ? "Gotcha! Back to the pen, you" : "Come on, let's go home", her, 1800); sfx('leash'); setBanner();
+  if (isHorse(a) && !caught && !riding && !CONFIG._rideHint) { CONFIG._rideHint = true; setTimeout(() => { if (a.leashed && !riding) say("Tap the horse again to ride it!", him, 2400); }, 2000); }
+}
+/* ---------- Feeding: an apple or carrot appears now and then; feed a loose animal and it follows her home ---------- */
+let TREAT = null, treatTimer = 6;
+const TREAT_ICON = {
+  apple(x, y){ px('#c4282c', x - 2, y - 5, 5, 4); px('#e8453c', x - 2, y - 5, 2, 2); px('#8e1c20', x - 1, y - 1, 3, 1); px('#6b4226', x, y - 7, 1, 2); px('#4f9a3c', x + 1, y - 7, 2, 1); px('#ffd1c4', x - 1, y - 4, 1, 1); },
+  carrot(x, y){ px('#ee8a2a', x - 1, y - 6, 3, 3); px('#ee8a2a', x, y - 3, 2, 2); px('#ee8a2a', x, y - 1, 1, 1); px('#c86a18', x - 1, y - 5, 1, 1); px('#4f9a3c', x - 1, y - 8, 1, 2); px('#6cbf4a', x + 1, y - 9, 1, 3); px('#4f9a3c', x, y - 8, 1, 1); },
+};
+function spawnTreat(){
+  for (let n = 0; n < 60; n++) {
+    const x = 20 + Math.random() * (IW - 40), y = PEN.y1 + 30 + Math.random() * (IH - PEN.y1 - 40);
+    if (animalBlocked(x, y) || ITEMS.some(i => Math.hypot(i.x - x, i.y - y) < 14)) continue;
+    TREAT = { kind: Math.random() < 0.5 ? 'apple' : 'carrot', x: Math.round(x), y: Math.round(y), born: performance.now() };
+    puff(TREAT.x, TREAT.y - 3, 6, ['#ffffff', '#ffd76a']);
+    return;
+  }
+}
+function updateTreats(dt){
+  if (TREAT || her.treat || ended) return;
+  treatTimer -= dt;
+  if (treatTimer <= 0) { spawnTreat(); treatTimer = CONFIG.treatEvery; }
+}
+function feed(a){
+  const kind = her.treat; her.treat = null; her.chase = null; target = null; route = [];
+  for (let i = 0; i < 3; i++) setTimeout(() => heart(a.x + (Math.random() - 0.5) * 8, a.y - (a.bh || 20) - 2), i * 220);
+  sfx('munch');
+  if (!a.penned && !leads.length) {                            // it loves her now and follows without a leash
+    leads.push(a); a.leashed = true; a.friendly = true; a.tx = null; trail = [her.x, her.y];
+    say(`Yum! The ${a.k.name} will follow you now`, him, 2000);
+  } else say(kind === 'apple' ? "Crunch crunch!" : "Munch munch!", him, 1400);
+  setBanner();
+}
+
+/* ---------- Hidden surprises: little things around the ranch with a message for "apple" ---------- */
+let SURPRISES = [];
+const surpriseFound = CONFIG.surprises.map(() => false);
+function layoutSurprises(){
+  const t = TREES[0];
+  SURPRISES = [
+    { kind: 'tree',   x: t.x,                    y: t.y - 4 },
+    { kind: 'bottle', x: POND.x + POND.rx - 1,   y: POND.y + 5 },
+    { kind: 'gift',   x: Math.round(IW * 0.12),  y: Math.round(IH * 0.88) },
+    { kind: 'note',   x: PEN.x0 + 25,            y: PEN.y0 + 21 },
+    { kind: 'letter', x: Math.round(IW * 0.28) + 9, y: Math.round(IH * 0.93) + 1 },
+    { kind: 'heartstone', x: TREES[1].x - 9,       y: TREES[1].y + 2 },
+    { kind: 'jar',     x: PEN.x1 - 22,            y: PEN.y0 + 30 },
+    { kind: 'balloon', x: PEN.x0 + 7,             y: PEN.y1 + 22 },
+    { kind: 'ringbox', x: Math.round(IW * 0.74),  y: Math.round(IH * 0.605) },
+  ].slice(0, CONFIG.surprises.length);
+}
+function drawSurprise(sp, i, now){
+  const x = sp.x, y = sp.y, found = surpriseFound[i];
+  if (sp.kind === 'tree') {                              // little heart carved in the bark (stays after it's found)
+    px('#4a2e1a', x - 2, y - 3, 2, 1); px('#4a2e1a', x + 1, y - 3, 2, 1); px('#4a2e1a', x - 2, y - 2, 5, 1); px('#4a2e1a', x - 1, y - 1, 3, 1); px('#4a2e1a', x, y, 1, 1);
+    if (!found) { px('#ff8fa6', x - 1, y - 2, 1, 1); px('#ff8fa6', x + 1, y - 2, 1, 1); }
+  } else if (!found) {
+    if (sp.kind === 'bottle') { px('#9fd3c7', x - 1, y - 5, 3, 5); px('#d6f0ea', x - 1, y - 5, 1, 3); px('#6b4226', x, y - 7, 1, 2); px('#fff3d0', x, y - 4, 1, 3); }
+    if (sp.kind === 'gift') { px('#d63a4a', x - 3, y - 5, 7, 5); px('#ffd76a', x, y - 5, 1, 5); px('#ffd76a', x - 3, y - 3, 7, 1); px('#ffd76a', x - 2, y - 7, 2, 2); px('#ffd76a', x + 1, y - 7, 2, 2); px('#9a2030', x - 3, y - 1, 7, 1); }
+    if (sp.kind === 'note') { px('#fff8e6', x - 3, y - 4, 6, 4); px('#d9cfb8', x - 3, y - 1, 6, 1); px('#ff5d7a', x - 1, y - 3, 2, 1); px('#ff5d7a', x - 1, y - 2, 1, 1); }
+    if (sp.kind === 'heartstone') { px('#e88aa6', x - 3, y - 4, 3, 2); px('#e88aa6', x + 1, y - 4, 3, 2); px('#e88aa6', x - 3, y - 2, 7, 1); px('#d66f8e', x - 2, y - 1, 5, 1); px('#d66f8e', x - 1, y, 3, 1); px('#ffd1dc', x - 2, y - 4, 1, 1); }
+    if (sp.kind === 'jar') { px('#cfe8f0', x - 2, y - 6, 5, 6); px('#7a5234', x - 2, y - 7, 5, 1); px('#fff3a0', x - 1, y - 4, 1, 1); px('#fff3a0', x + 1, y - 2, 1, 1); px('#ffe066', x, y - 5, 1, 1); px('#a8c8d4', x + 2, y - 6, 1, 6); }
+    if (sp.kind === 'balloon') { px('#e8384a', x - 2, y - 14, 5, 4); px('#e8384a', x - 1, y - 10, 3, 1); px('#ff8a96', x - 1, y - 13, 1, 1); px('#ffffff', x, y - 9, 1, 9); }
+    if (sp.kind === 'ringbox') { px('#7a2a4a', x - 3, y - 4, 7, 4); px('#9a3a62', x - 3, y - 4, 7, 1); px('#ffd76a', x, y - 6, 1, 2); px('#ffffff', x, y - 7, 1, 1); px('#5a1a34', x - 3, y - 1, 7, 1); }
+    if (sp.kind === 'letter') { px('#fff8e6', x - 3, y - 4, 7, 4); px('#d9cfb8', x - 3, y - 4, 1, 1); px('#d9cfb8', x + 3, y - 4, 1, 1); px('#d9cfb8', x - 2, y - 3, 1, 1); px('#d9cfb8', x + 2, y - 3, 1, 1); px('#d9cfb8', x - 1, y - 2, 3, 1); px('#c4503f', x, y - 2, 1, 1); }
+  }
+  if (!found) {                                          // a bright shine: steady glow + a big twinkle every couple of seconds
+    const glow = 0.28 + 0.2 * Math.sin(now / 300 + i);
+    const gr = g.createRadialGradient(x, y - 3, 0, x, y - 3, 9);
+    gr.addColorStop(0, `rgba(255,248,200,${glow})`); gr.addColorStop(1, 'rgba(255,248,200,0)');
+    g.fillStyle = gr; g.fillRect(x - 9, y - 12, 18, 18);
+    const t = ((now / 1000 + i * 0.61) % 2.2) / 2.2;
+    if (t < 0.3) {
+      const k = Math.sin(t / 0.3 * Math.PI), sx = x + 3, sy = y - 9, L = 1 + Math.round(k * 2);
+      g.globalAlpha = k;
+      px('#ffffff', sx, sy - L, 1, L * 2 + 1); px('#ffffff', sx - L, sy, L * 2 + 1, 1);
+      px('#fff6b0', sx - 1, sy - 1, 1, 1); px('#fff6b0', sx + 1, sy + 1, 1, 1); px('#fff6b0', sx + 1, sy - 1, 1, 1); px('#fff6b0', sx - 1, sy + 1, 1, 1);
+      g.globalAlpha = 1;
+    }
+    const up = ((now / 1000 + i * 0.37) % 1.6) / 1.6;      // a little dot floating up
+    g.globalAlpha = 1 - up; px('#fffbe0', x - 3 + (i % 3) * 3, y - 4 - up * 10, 1, 1); g.globalAlpha = 1;
+  }
+}
+const cardEl = document.getElementById('card'), foundEl = document.getElementById('found');
+let cardOpen = false;
+function openSurprise(i){
+  surpriseFound[i] = true; cardOpen = true; cardEl.classList.remove('fish');
+  cardEl.querySelector('.from').textContent = 'A LITTLE SURPRISE';
+  cardEl.querySelector('.msg').textContent = CONFIG.surprises[i];
+  cardEl.classList.add('show'); sfx('letter');
+  const n = surpriseFound.filter(Boolean).length;
+  foundEl.textContent = `♥ ${n}/${SURPRISES.length} surprises`; foundEl.classList.add('show');
+  heart(SURPRISES[i].x, SURPRISES[i].y - 10);
+}
+cardEl.querySelector('button').addEventListener('click', () => {
+  cardEl.classList.remove('show'); setTimeout(() => { cardOpen = false; }, 250);
+  if (surpriseFound.every(Boolean)) say("You found them all!", him, 2200);
+});
+
+function penAnimal(a){
+  a.leashed = false; a.friendly = false; a.penned = true; leads = leads.filter(o => o !== a); a.tx = null; a.wait = 1 + Math.random() * 2;
+  heart(a.x, a.y - (a.bh || 20) - 2); sfx('pen');
+  const home = ANIMALS.filter(o => o.penned).length;
+  say(home === ANIMALS.length ? "Everyone's home!" : `Welcome home, little ${a.k.name}!`, him, 2000);
+  setBanner();
+}
+function followLeash(a, dt){
+  if (a.riding) {                                        // she's on its back: it goes where she goes
+    const dx = her.x - a.x, dy = her.y - a.y;
+    a.moving = her.moving; if (her.moving) { a.step += dt * a.k.cycle * 2.6; if (Math.hypot(dx, dy) > 0.01) faceAnimal(a, dx, dy); }
+    a.x = her.x; a.y = her.y;
+    if (penInside(a.x, a.y)) { dismount(true); penAnimal(a); }
+    return;
+  }
+  let tx = null, ty = null;
+  const n = Math.max(0, leads.indexOf(a)), back = 30 + n * 22, keep = 22 + n * 20;   // a second animal walks behind the first
+  const d = Math.hypot(her.x - a.x, her.y - a.y);
+  if (her.moving) {                                      // walk in her footsteps, a little behind
+    let acc = 0, i = trail.length - 2;
+    for (; i > 1; i -= 2) { acc += Math.hypot(trail[i] - trail[i - 2], trail[i + 1] - trail[i - 1]); if (acc > back) break; }
+    if (acc > back) { tx = trail[i]; ty = trail[i + 1]; }
+  }
+  if (tx === null && d > keep + 4) { tx = her.x + (a.x - her.x) / d * keep; ty = her.y + (a.y - her.y) / d * keep; }
+  a.moving = false;
+  if (tx !== null) {
+    const dx = tx - a.x, dy = ty - a.y, dd = Math.hypot(dx, dy);
+    if (dd > 0.6) {
+      const st = Math.min(dd, CONFIG.walkSpeed * 1.15 * dt);
+      a.x += dx / dd * st; a.y += dy / dd * st; a.moving = true; a.step += dt * a.k.cycle * 1.6; faceAnimal(a, dx, dy);
+    }
+  }
+  if (penInside(a.x, a.y)) penAnimal(a);
+}
+function updateAnimals(dt){
+  const thiefNow = ANIMALS.some(o => o.carry) || (fishing.phase && fishing.phase !== 'walk') || dancing();
+  for (const a of ANIMALS) {
+    a.cool = Math.max(0, a.cool - dt);
+    if (a.danceUntil && performance.now() < a.danceUntil) { a.moving = false; continue; }   // bopping along to the dance
+    if (a.leashed) { followLeash(a, dt); continue; }
+    if (a.carry && Math.hypot(her.x - a.x, her.y - a.y) < 10) { attachLeash(a, true); continue; }   // caught! it drops the item and gets the leash
+    if (a.k.name === 'piglet' && !a.penned && !a.carry && !thiefNow && !ended) {   // the piglet goes for an item every 7 seconds
+      if (!a.goal && a.cool <= 0) {
+        let best = null, bd = 1e9;
+        for (const i of ITEMS) if (!i.taken && !i.held && !animalBlocked(i.x, i.y)) { const d = Math.hypot(i.x - a.x, i.y - a.y); if (d < bd) { bd = d; best = i; } }
+        if (best) { a.goal = best; a.cool = 7; }
+      }
+      if (a.goal) {
+        if (a.goal.taken || a.goal.held) a.goal = null;
+        else if (Math.hypot(a.goal.x - a.x, a.goal.y - a.y) < 6) { const g = a.goal; a.goal = null; steal(a, g); continue; }
+        else { a.tx = a.goal.x; a.ty = a.goal.y + 1; a.wait = 0; }
+      }
+    }
+    if (a.k.name !== 'piglet' && !a.penned && !a.carry && !thiefNow && a.cool <= 0 && !ended) {
+      const it = ITEMS.find(i => !i.taken && !i.held && Math.hypot(i.x - a.x, i.y - a.y) < 11);
+      if (it && Math.random() < dt * 0.9) { steal(a, it); continue; }
+    }
+    if (a.tx === null) {
+      a.moving = false; a.wait -= dt;
+      if (a.wait <= 0) pickTarget(a);
+      continue;
+    }
+    const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+    if (d < 1) { a.tx = null; a.wait = a.carry ? 0 : 1.5 + Math.random() * 5; continue; }
+    const fast = a.carry ? 2.3 : 1;
+    const st = Math.min(d, a.k.speed * fast * dt);
+    const nx = a.x + dx / d * st, ny = a.y + dy / d * st;
+    const bad = a.penned ? !penInside(nx, ny) : animalBlocked(nx, ny);
+    if (bad) { a.tx = null; a.wait = a.carry ? 0 : 0.5; if (a.goal) { a.x += (Math.random() - 0.5) * 2; a.goal = null; a.cool = 2; } continue; }
+    a.x = nx; a.y = ny; a.moving = true; a.step += dt * a.k.cycle * (a.carry ? 2 : 1);
+    faceAnimal(a, dx, dy);
+  }
+}
+function drawAnimal(a){
+  const k = a.k, set = k.dirs[a.dir] || k.dirs.side, side = set === k.dirs.side;
+  const n = set.length - 1, sp = set[a.moving ? 1 + Math.floor(((a.step % 1) + 1) % 1 * n) : 0];
+  const sc = k.scale, w = sp.width * sc, h = sp.height * sc;
+  const hop = a.danceUntil && performance.now() < a.danceUntil ? Math.round(Math.abs(Math.sin(performance.now() / 140 + a.x)) * 2) : 0;
+  const x = Math.round((a.x - w / 2) / sc) * sc, y = Math.round((a.y - h) / sc) * sc - hop;
+  // soft pixel shadow under the body
+  g.fillStyle = 'rgba(52,40,26,0.24)';
+  const half = (side ? w * 0.36 : w * 0.3);
+  for (let r = -2; r <= 1; r++) {
+    const hw = Math.round(half * Math.sqrt(Math.max(0, 1 - (r / 2.6) ** 2)) * 2) / 2;
+    g.fillRect(Math.round(a.x * 2) / 2 - hw, Math.round(a.y) + r * 0.5 - 0.5, hw * 2, 0.5);
+  }
+  if (side && a.flip) { g.save(); g.translate(x + w, y); g.scale(-1, 1); g.drawImage(sp, 0, 0, w, h); g.restore(); }
+  else g.drawImage(sp, x, y, w, h);
+  a.bw = w; a.bh = h;
+  // where the leash clips on, and where a stolen item sits
+  if (side) { a.nx = x + (a.flip ? w * 0.24 : w * 0.76); a.ny = y + h * 0.3; }
+  else { a.nx = a.x; a.ny = y + h * (a.dir === 'front' ? 0.5 : 0.28); }
+  if (a.riding) drawRider(a, x, y, w, h, side);
+  if (a.carry) {
+    const mx = Math.round((side ? x + (a.flip ? w * 0.08 : w * 0.92) : a.x) * 2) / 2;
+    const my = Math.round((side ? y + h * 0.45 : y + h * (a.dir === 'front' ? 0.62 : 0.2)) * 2) / 2;
+    g.save(); g.translate(mx, my); g.scale(0.5, 0.5); ICON[a.carry.kind](0, 4); g.restore();
+    const bounce = Math.round(Math.abs(Math.sin(performance.now() / 160)) * 2);
+    px('#ffd76a', Math.round(a.x), y - 7 - bounce, 1, 3); px('#ffd76a', Math.round(a.x), y - 3 - bounce, 1, 1);   // "!"
+  }
+}
+function drawRider(a, x, y, w, h, side){
+  const gallop = a.moving ? Math.round(Math.abs(Math.sin(a.step * Math.PI * 2)) * 1) : 0;
+  let sx, sy, dir, flip = false;
+  if (side) { sx = x + w * (a.flip ? 0.56 : 0.44); sy = y + h * 0.36; dir = 'side'; flip = a.flip; }
+  else { sx = a.x; sy = y + h * (a.dir === 'front' ? 0.42 : 0.3); dir = a.dir === 'front' ? 'down' : 'up'; }
+  g.fillStyle = '#b8323a'; g.fillRect(Math.round(sx * 2) / 2 - 3, Math.round(sy * 2) / 2 - 0.5, 6, 2);      // a little red saddle blanket
+  g.fillStyle = '#f1d58b'; g.fillRect(Math.round(sx * 2) / 2 - 3, Math.round(sy * 2) / 2 + 1, 6, 0.5);
+  const s = sprites[`her_${dir}_0`], px0 = Math.round(sx) - 8, py0 = Math.round(sy) - SH + 6 - gallop;
+  g.save(); g.beginPath(); g.rect(px0 - 2, py0 - 4, SW + 4, SH - 3); g.clip();      // legs tucked out of sight (she's sitting)
+  if (dir === 'side' && flip) { g.translate(px0 + SW, py0); g.scale(-1, 1); g.drawImage(s, 0, 0); } else g.drawImage(s, px0, py0);
+  g.restore();
+  her.rideTop = py0;
+  if (performance.now() < alertUntil) { const ax = Math.round(sx) - 1, ay = py0 - 10; px('#2a0d0d', ax - 1, ay - 1, 4, 9); px('#e8382c', ax, ay, 2, 5); px('#e8382c', ax, ay + 6, 2, 2); }
+  if (her.treat) TREAT_ICON[her.treat](Math.round(sx), py0 - 1);
+}
+/* the wooden fence along the front of the pen (drawn in depth order so animals inside are behind it) */
+function drawPenFront(){
+  const y = PEN.y1, RAIL = '#a8713f', HI = '#c9955c', POST = '#6b4222';
+  const rail = (xa, xb) => {
+    if (xb <= xa) return;
+    for (const ry of [y - 7, y - 4]) { px(RAIL, xa, ry, xb - xa, 1); g.fillStyle = HI; g.fillRect(xa, ry, xb - xa, 0.5); }
+    for (let x = xa; x <= xb - 2; x += 12) { px(POST, x, y - 9, 2, 9); g.fillStyle = HI; g.fillRect(x, y - 9, 1, 0.5); }
+  };
+  rail(PEN.x0, PEN.g0); rail(PEN.g1, PEN.x1);
+  for (const gp of [PEN.g0 - 2, PEN.g1]) { px(POST, gp, y - 14, 3, 14); px(HI, gp, y - 14, 3, 1); }   // tall gate posts
+  px('#8a5a32', PEN.g0 - 2, y - 15, PEN.g1 - PEN.g0 + 5, 2);                                          // beam over the opening
+  px('#c9955c', PEN.gx - 4, y - 20, 9, 5); px('#8a5a32', PEN.gx - 4, y - 16, 9, 1);                  // little sign
+  px('#ff5d7a', PEN.gx - 2, y - 19, 2, 1); px('#ff5d7a', PEN.gx + 1, y - 19, 2, 1); px('#ff5d7a', PEN.gx - 2, y - 18, 5, 1); px('#ff5d7a', PEN.gx - 1, y - 17, 3, 1);
+}
+
+/* ============================================================
+   World layout (relative to the pixel world size)
+   ============================================================ */
+let LOT, PEN, TREES = [], POND, ITEMS = [], FLOWERS_DECO = [];
+const pathX = y => LOT.cx + Math.sin((y - LOT.base) * 0.022) * 14;       // the driveway's curve (coarse units)
+const STAGES = [
+  { item: 'stones',  need: "stones for the foundation",  done: "A strong foundation!" },
+  { item: 'walls',   need: "white brick for the walls",   done: "Walls are up!" },
+  { item: 'door',    need: "our front door",              done: "A door to come home to" },
+  { item: 'glass',   need: "glass for the windows",       done: "So much sunlight" },
+  { item: 'roof',    need: "shingles for the roof",       done: "A roof over our heads" },
+  { item: 'chimney', need: "bricks for the chimney",      done: "Cozy fireplace nights" },
+  { item: 'palm',    need: "the palm for the front yard", done: "Just like we pictured it" },
+  { item: 'lantern', need: "lanterns for the porch",      done: "Always a light on for you" },
+];
+function layout(){
+  const r = rnd(9);
+  LOT = { cx: Math.round(IW / 2), base: Math.round(IH * 0.56) };            // where the house stands (ground line)
+  // the backyard pen: wooden fence behind the house, with its opening on the right
+  PEN = { x0: 8, x1: IW - 8, y0: Math.round(IH * 0.15), y1: Math.round(LOT.base - 62) };
+  if (PEN.y1 - PEN.y0 < 44) PEN.y0 = Math.max(26, PEN.y1 - 44);
+  PEN.gx = Math.round(Math.min(LOT.cx + 68, PEN.x1 - 14)); PEN.g0 = PEN.gx - 10; PEN.g1 = PEN.gx + 10;
+  POND = { x: Math.round(IW * 0.2), y: Math.round(IH * 0.78), rx: 22, ry: 11 };
+  TREES = [
+    [IW * 0.05, IH * 0.5], [IW * 0.95, IH * 0.74], [IW * 0.95, IH * 0.97], [IW * 0.62, IH * 0.99],
+    [IW * 0.3, IH * 0.995], [IW * 0.05, IH * 0.96],
+  ].map(([x, y]) => ({ x: Math.round(x), y: Math.round(y), s: 0.85 + r() * 0.3 }));
+  const spots = {                                                              // where each material waits
+    stones: [0.40, 0.86], walls: [0.14, 0.62], door: [0.85, 0.66], glass: [0.80, 0.80],
+    roof: [0.30, 0.70], chimney: [0.62, 0.90], palm: [0.50, 0.76], lantern: [0.88, 0.56],
+  };
+  ITEMS = Object.entries(spots).map(([k, [fx, fy]]) => ({ kind: k, x: Math.round(IW * fx), y: Math.round(IH * fy), taken: false, held: null }));
+  layoutSurprises();
+  FLOWERS_DECO = [];
+  for (let i = 0; i < 70; i++) FLOWERS_DECO.push([Math.floor(r() * IW), Math.floor(r() * IH), Math.floor(r() * 4)]);
+}
+
+/* ============================================================
+   Static meadow background
+   ============================================================ */
+/* little flower sprites for the meadow (fine pixels) */
+const FLOWER_ART = {
+  poppy:     { pal: { r:'#c9281f', R:'#ee4a36', k:'#2a1512' }, rows: ["..rrr..",".rRRRr.","rRRkRRr",".rRRRr.","..rrr..","...g...","..Lg...","...gL..","...g..."] },
+  marigold:  { pal: { r:'#e8891c', R:'#ffb43a', k:'#b85e10' }, rows: ["..rrr..",".rRRRr.","rRRkRRr",".rRRRr.","..rrr..","...g...","...gL..","...g..."] },
+  daisy:     { pal: { w:'#ffffff', y:'#f6c436' }, rows: [".w.w.w.","..www..",".wwyww.","..www..",".w.w.w.","...g...","..gg...","...g..."] },
+  corn:      { pal: { w:'#5b86ea', y:'#27408f' }, rows: [".w.w.w.","..www..",".wwyww.","..www..",".w.w.w.","...g...","...gL..","...g..."] },
+  butter:    { pal: { y:'#ffd93b', o:'#e89a1c' }, rows: [".yy.yy.",".yyoyy.","..yyy..","...g...","...gL..","...g..."] },
+  bell:      { pal: { b:'#5a7fe6', B:'#8eacf5' }, rows: ["..gg...",".g..g..",".B..g..","bBb.g..","b.b.g..","....gL.","....g.."] },
+  lavender:  { pal: { p:'#8a63d2', P:'#b79af0' }, rows: ["..P..",".pP..","..p..",".Pp..","..p..","..g..",".Lg..","..g.."] },
+  clover:    { pal: { p:'#e07aa8', P:'#f6b3cf' }, rows: [".ppp.","pPpPp","ppPpp",".ppp.","..g..","..gL.","..g.."] },
+};
+const FLOWER_KINDS = Object.keys(FLOWER_ART);
+
+function drawBackground(){
+  const F = 2, BW = IW * F, BH = IH * F;                 // the meadow is painted with pixels half the size of the sprites
+  bg.width = BW; bg.height = BH;
+  const b = bgc, r = rnd(3);
+  const P = (c, x, y, w = 1, h = 1) => { b.fillStyle = c; b.fillRect(Math.round(x), Math.round(y), w, h); };
+  const blob = (cx, cy, rx, ry, fn) => { for (let y = -ry; y <= ry; y++) for (let x = -rx; x <= rx; x++) { const d = (x * x) / (rx * rx) + (y * y) / (ry * ry); if (d <= 1.25) fn(Math.round(cx + x), Math.round(cy + y), d); } };
+  // warm green ground with soft mottling
+  P('#84b64c', 0, 0, BW, BH);
+  for (let i = 0; i < 110; i++) {
+    const col = ['#90c254', '#79aa46', '#8cbc50', '#74a544'][i % 4];
+    blob(r() * BW, r() * BH, Math.round(8 + r() * 26), Math.round(5 + r() * 14), (x, y, d) => { if (d + (r() - 0.5) * 0.5 <= 1) P(col, x, y); });
+  }
+  // sunlit clearings
+  for (let i = 0; i < 8; i++) {
+    blob(BW * (0.15 + r() * 0.7), BH * (0.2 + r() * 0.75), Math.round(30 + r() * 40), Math.round(16 + r() * 22),
+      (x, y, d) => { if (d + (r() - 0.5) * 0.55 <= 1) P(d < 0.55 ? '#c9da72' : '#a9cc5e', x, y); });
+  }
+  for (let i = 0; i < 1100; i++) {                                  // short grass tufts
+    const x = r() * BW, y = r() * BH, c = r() < 0.6 ? '#5f9a40' : '#a6d062';
+    P(c, x, y, 1, 2); P(c, x + 1, y + 1); P(c, x + 2, y, 1, 2);
+  }
+  const padX = LOT.cx + 34, padY = LOT.base + 34;
+  const blocked = (fx, fy, m = 0) => {                                     // takes fine pixels
+    const x = fx / F, y = fy / F;
+    return (Math.abs(x - LOT.cx) < 62 + m && y > LOT.base - 56 - m && y < LOT.base + 8 + m) ||
+      (y > LOT.base && Math.abs(x - pathX(y)) < 10 + m) ||
+      (((x - POND.x) / (POND.rx + 4 + m)) ** 2 + ((y - POND.y) / (POND.ry + 4 + m)) ** 2 < 1) ||
+      (((x - padX) / (24 + m)) ** 2 + ((y - padY) / (16 + m)) ** 2 < 1) ||
+      (y < PEN.y1 + 2 + m && y > PEN.y0 - 12 - m);                       // the pen
+  };
+  // leafy ground-cover patches with tiny blossoms
+  for (let i = 0; i < 5; i++) {
+    const cx = r() * BW, cy = r() * BH; if (blocked(cx, cy, 14)) continue;
+    blob(cx, cy, Math.round(22 + r() * 16), Math.round(12 + r() * 8), (x, y, d) => { if (d + (r() - 0.5) * 0.4 <= 1) P(r() < 0.3 ? '#56984a' : '#3f7f38', x, y); });
+    for (let k = 0; k < 14; k++) { const x = cx + (r() - 0.5) * 40, y = cy + (r() - 0.5) * 20; P(k % 3 ? '#ffffff' : '#f6b3cf', x, y, 2, 2); P('#f6c436', x, y); }
+  }
+  // tall grass blocks
+  for (let i = 0; i < 16; i++) {
+    const gx = r() * BW, gy = r() * BH, w = 30 + r() * 44, h = 22 + r() * 30;
+    for (let y = gy; y < gy + h; y += 3) for (let x = gx; x < gx + w; x += 2) {
+      const xx = x + r() * 2, hg = 6 + r() * 7, lean = r() < 0.5 ? 1 : -1;
+      if (blocked(xx, y, 3) || r() < 0.12) continue;
+      for (let k = 0; k < hg; k++) P(k < hg * 0.4 ? '#2f6e32' : (k < hg * 0.8 ? '#4b9442' : '#8cc65a'), xx + (k > hg * 0.7 ? lean : 0), y - k);
+    }
+  }
+  // concrete driveway curving up to the house, with a round pad
+  for (let y = (LOT.base + 5) * F; y < BH; y++) {
+    const x = pathX(y / F) * F;
+    P('#d9d2c0', x - 16, y, 32, 1); P('#bdb5a2', x - 16, y, 2, 1); P('#bdb5a2', x + 14, y, 2, 1);
+    if (r() < 0.5) P('#cdc5b2', x - 13 + r() * 25, y, 2, 1);
+    if (y % (14 * F) === 0) P('#c2baa8', x - 16, y, 32, 1);
+  }
+  blob(padX * F, padY * F, 44, 28, (x, y, d) => { if (d <= 1) P(d > 0.88 ? '#bdb5a2' : (r() < 0.06 ? '#cdc5b2' : '#d9d2c0'), x, y); });
+  // the lot: bare earth until we build
+  P('#b08a5a', (LOT.cx - 58) * F, (LOT.base - 26) * F, 116 * F, 32 * F);
+  for (let i = 0; i < 900; i++) P(r() < 0.5 ? '#9a774c' : '#c09a68', (LOT.cx - 58) * F + r() * 116 * F, (LOT.base - 26) * F + r() * 32 * F, 2, 1);
+  // pond with lily pads
+  blob(POND.x * F, POND.y * F, POND.rx * F, POND.ry * F, (x, y, d) => {
+    if (d <= 1) P(d > 0.8 ? '#3f86b0' : (d > 0.5 ? '#4f9fcb' : '#63b4de'), x, y); else if (d <= 1.14) P(r() < 0.3 ? '#6f8a4a' : '#8c7a5a', x, y); });
+  for (const [dx, dy] of [[-18, -4], [12, 6], [20, -8], [-6, 9]]) { P('#3f9a3c', POND.x * F + dx, POND.y * F + dy, 6, 4); P('#56b34a', POND.x * F + dx + 1, POND.y * F + dy, 3, 2); P('#f7a8cf', POND.x * F + dx + 3, POND.y * F + dy + 1, 2, 2); }
+  P('#d6f0ff', POND.x * F - 10, POND.y * F - 10, 12, 1); P('#d6f0ff', POND.x * F - 4, POND.y * F - 7, 6, 1);
+  // fallen logs
+  const log = (x, y, len) => {
+    P('rgba(0,0,0,0.18)', x + 2, y + 9, len, 3);
+    P('#8a5a34', x, y, len, 9); P('#a9713f', x, y, len, 2); P('#6b4226', x, y + 7, len, 2);
+    for (let k = 4; k < len - 6; k += 5) P('#6b4226', x + k + (k % 2), y + 3 + (k % 3), 3, 1);
+    P('#d8b27c', x + len - 4, y + 1, 4, 7); P('#b98a52', x + len - 3, y + 3, 2, 3); P('#8a5a34', x + len - 2, y + 4, 1, 1);
+    P('#7a4e2c', x + 8, y - 3, 2, 3);
+  };
+  for (const [fx, fy, len] of [[0.04, 0.66, 30], [0.76, 0.7, 34], [0.28, 0.93, 28], [0.06, 0.88, 26]]) { const x = BW * fx, y = BH * fy; if (!blocked(x + len / 2, y, 5)) log(Math.round(x), Math.round(y), len); }
+  // wildflowers in little clusters
+  const fl = [];
+  for (let i = 0; i < 58; i++) {
+    const fx = r() * BW, fy = r() * BH, kind = FLOWER_KINDS[Math.floor(r() * FLOWER_KINDS.length)], n = 3 + Math.floor(r() * 6);
+    for (let k = 0; k < n; k++) fl.push([fx + (k % 3) * 11 + r() * 5, fy + Math.floor(k / 3) * 11 + r() * 5, kind]);
+  }
+  for (let i = 0; i < 40; i++) fl.push([r() * BW, r() * BH, FLOWER_KINDS[Math.floor(r() * FLOWER_KINDS.length)]]);
+  fl.sort((a, c) => a[1] - c[1]);
+  for (const [x, y, kind] of fl) {
+    if (blocked(x + 3, y, 4) || y < 14) continue;
+    const art = FLOWER_ART[kind], h = art.rows.length;
+    art.rows.forEach((row, j) => [...row].forEach((ch, i) => {
+      if (ch === '.') return;
+      P(ch === 'g' ? '#3f7a2e' : ch === 'L' ? '#62ab3c' : art.pal[ch], x + i, y - h + j);
+    }));
+  }
+  // ---- the backyard pen: trampled grass, hay, a water trough, wooden fences on three sides
+  const X0 = PEN.x0 * F, X1 = PEN.x1 * F, Y0 = PEN.y0 * F, Y1 = PEN.y1 * F;
+  for (let i = 0; i < 26; i++) {
+    const col = ['#9cc35c', '#8db552', '#a9c96a'][i % 3];
+    blob(X0 + r() * (X1 - X0), Y0 + r() * (Y1 - Y0), Math.round(10 + r() * 22), Math.round(6 + r() * 10),
+      (x, y, d) => { if (x > X0 && x < X1 && y > Y0 && y < Y1 && d + (r() - 0.5) * 0.5 <= 1) P(col, x, y); });
+  }
+  for (let i = 0; i < 160; i++) P(r() < 0.5 ? '#e3c46a' : '#cfae52', X0 + 4 + r() * (X1 - X0 - 8), Y0 + 4 + r() * (Y1 - Y0 - 8), 2, 1);   // loose hay
+  for (let i = 0; i < 14; i++) { const x = X0 + 8 + r() * (X1 - X0 - 16), y = Y0 + 10 + r() * (Y1 - Y0 - 16); P('#ffffff', x - 1, y, 3, 1); P('#ffffff', x, y - 1, 1, 3); P('#f6c436', x, y); }
+  const hb = (x, y) => {                                                   // hay bale
+    P('rgba(0,0,0,0.18)', x + 2, y + 18, 28, 3);
+    P('#d9ae45', x, y, 28, 18); P('#f0d27a', x, y, 28, 4); P('#b98f2e', x, y + 15, 28, 3);
+    for (let k = 3; k < 28; k += 4) P('#c79a34', x + k, y + 5, 1, 9);
+    P('#8a6a2a', x + 8, y, 2, 18); P('#8a6a2a', x + 19, y, 2, 18);
+  };
+  hb(X0 + 18, Y0 + 12);
+  const tx = X1 - 52, ty = Y0 + 16;                                         // water trough
+  P('rgba(0,0,0,0.18)', tx + 2, ty + 12, 36, 3);
+  P('#6b4226', tx, ty, 36, 12); P('#8a5a34', tx, ty, 36, 2); P('#5fa9cf', tx + 3, ty + 2, 30, 5); P('#bfe6f7', tx + 6, ty + 3, 8, 1);
+  P('#4f3020', tx + 4, ty + 10, 3, 3); P('#4f3020', tx + 29, ty + 10, 3, 3);
+  // back fence
+  const RAIL = '#a8713f', HI = '#c9955c', POST = '#6b4222';
+  for (const ry of [Y0 - 12, Y0 - 6]) { P(RAIL, X0, ry, X1 - X0, 2); P(HI, X0, ry, X1 - X0, 1); }
+  for (let x = X0; x <= X1 - 4; x += 24) { P(POST, x, Y0 - 16, 4, 16); P(HI, x, Y0 - 16, 2, 2); P('rgba(0,0,0,0.15)', x + 4, Y0, 4, 2); }
+  // side fences
+  for (const sx of [X0, X1 - 4]) {
+    P(RAIL, sx + 1, Y0 - 12, 2, Y1 - Y0 + 2); P(HI, sx + 1, Y0 - 12, 1, Y1 - Y0 + 2);
+    for (let y = Y0 + 8; y < Y1 - 6; y += 20) { P(POST, sx, y - 6, 4, 10); P(HI, sx, y - 6, 2, 2); }
+  }
+  // warm sunbeams slanting across the meadow
+  b.globalAlpha = 0.10; b.fillStyle = '#fff7a8';
+  for (let i = 0; i < 4; i++) {
+    const x0 = -BW * 0.35 + i * BW * 0.34, w = BW * (0.08 + (i % 2) * 0.07);
+    b.beginPath(); b.moveTo(x0, 0); b.lineTo(x0 + w, 0); b.lineTo(x0 + w + BH * 0.55, BH); b.lineTo(x0 + BH * 0.55, BH); b.fill();
+  }
+  b.globalAlpha = 1;
+}
+
+/* ============================================================
+   Drawable things: trees, items, the house
+   ============================================================ */
+function drawTree(t){
+  const x = t.x, y = t.y, s = t.s;
+  g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x - 9 * s, y - 1, 18 * s, 3);
+  px('#6b4a2d', x - 2, y - 10, 4, 10); px('#57391f', x - 2, y - 10, 1, 10);
+  const R = Math.round(10 * s);
+  for (let yy = -R; yy <= R; yy++) for (let xx = -R; xx <= R; xx++) {
+    if (xx * xx + yy * yy * 1.2 > R * R) continue;
+    const shade = (xx + yy) > R * 0.4 ? '#2f6e32' : ((xx + yy) < -R * 0.5 ? '#9ccf5e' : '#4b9442');
+    px(shade, x + xx, y - 14 - R * 0.6 + yy);
+  }
+  // apples: little red fruit in the leaves, and a couple fallen in the grass
+  const cy = y - 14 - R * 0.6, n = 7 + Math.round(s * 2);
+  for (let i = 0; i < n; i++) {
+    const a = hashN(t.x + i * 17, t.y) * Math.PI * 2, d = Math.sqrt(hashN(t.x, t.y + i * 31)) * (R - 2.5);
+    const ax = Math.round((x + Math.cos(a) * d) * 2) / 2, ay = Math.round((cy + Math.sin(a) * d * 0.9) * 2) / 2;
+    g.fillStyle = '#7a1b1b'; g.fillRect(ax - 0.5, ay, 2, 1.5);
+    g.fillStyle = '#e0362c'; g.fillRect(ax - 0.5, ay - 0.5, 1.5, 1.5);
+    g.fillStyle = '#ff9a86'; g.fillRect(ax - 0.5, ay - 0.5, 0.5, 0.5);
+    g.fillStyle = '#4a2c18'; g.fillRect(ax, ay - 1, 0.5, 0.5);
+  }
+  for (const k of [0, 1]) {
+    const ax = Math.round((x - 6 * s + hashN(t.x, k) * 12 * s) * 2) / 2, ay = y - 1 + k;
+    g.fillStyle = '#7a1b1b'; g.fillRect(ax - 0.5, ay, 2, 1); g.fillStyle = '#e0362c'; g.fillRect(ax - 0.5, ay - 0.5, 1.5, 1); g.fillStyle = '#ff9a86'; g.fillRect(ax - 0.5, ay - 0.5, 0.5, 0.5);
+  }
+}
+const ICON = {
+  stones(x, y){ px('#b5ad9a', x - 5, y - 4, 4, 3); px('#d2cab7', x - 1, y - 6, 5, 4); px('#a39b88', x + 2, y - 3, 4, 3); px('#ece6d6', x, y - 6, 2, 1); },
+  walls(x, y){ for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) { px('#f3f0e8', x - 6 + c * 6 + (r % 2) * 2, y - 3 - r * 3, 5, 2); px('#cfcbc0', x - 6 + c * 6 + (r % 2) * 2, y - 1 - r * 3, 5, 1); } },
+  door(x, y){ px('#17181c', x - 5, y - 12, 10, 12); px('#2a2c33', x - 4, y - 11, 4, 11); px('#2a2c33', x + 1, y - 11, 3, 11); px('#5c7286', x - 3, y - 10, 2, 5); px('#5c7286', x + 2, y - 10, 1, 5); px('#d9b45a', x, y - 5, 1, 2); },
+  glass(x, y){ px('#17181c', x - 5, y - 9, 10, 9); px('#5c7f9c', x - 4, y - 8, 8, 7); px('#17181c', x - 1, y - 9, 1, 9); px('#17181c', x - 5, y - 5, 10, 1); px('#b9d6ea', x - 3, y - 7, 2, 1); },
+  roof(x, y){ for (let i = 0; i < 3; i++) px(i % 2 ? '#2f3037' : '#3b3c45', x - 6 + i, y - 3 - i * 2, 11, 2); px('#1d1e24', x - 6, y - 1, 13, 1); },
+  chimney(x, y){ px('#e9e6de', x - 3, y - 9, 6, 9); px('#cfcbc0', x + 1, y - 9, 2, 9); px('#17181c', x - 4, y - 11, 8, 2); },
+  palm(x, y){ px('#9c5b3a', x - 3, y - 4, 6, 4); px('#7d4529', x - 3, y - 1, 6, 1); px('#6b4a2d', x, y - 8, 1, 4);
+    for (const [dx, dy] of [[-5, -9], [-3, -12], [0, -13], [3, -12], [5, -9]]) { px('#3f9a3c', x + dx * 0.5, y - 8 + (dy + 8) * 0.5); px('#57b84a', x + dx, y + dy); } },
+  lantern(x, y){ px('#17181c', x - 2, y - 9, 5, 9); px('#ffe28a', x - 1, y - 7, 3, 5); px('#17181c', x - 1, y - 11, 3, 2); px('#17181c', x, y - 12, 1, 1); },
+};
+/* the house grows stage by stage; k = 0..1 reveal of the newest stage.
+   A white ranch house: stone base, white brick, black windows and doors, charcoal roof with three gables. */
+function drawHouse(stage, k, night){
+  const cx = LOT.cx, base = LOT.base, x0 = cx - 54, wallH = 24, wt = base - wallH;
+  const reveal = (i, fn) => {                            // newest part rises in from the bottom
+    if (stage < i) return;
+    const kk = stage === i ? ease(k) : 1;
+    if (kk <= 0) return;
+    g.save(); g.beginPath(); g.rect(0, base + 60 - (base + 60) * kk, IW, IH); g.clip(); fn(); g.restore();
+  };
+  const R1 = '#2f3037', R2 = '#3b3c45', R3 = '#1d1e24', WHITE = '#f3f0e8', BLACK = '#17181c';
+  reveal(1, () => {                                      // 1 foundation
+    px('#bdb4a0', x0 - 2, base, 112, 4);
+    for (let i = 0; i < 19; i++) px(i % 2 ? '#d6cdb9' : '#c8bfab', x0 - 1 + i * 6, base + 1, 5, 2);
+    px('#8f8777', x0 - 2, base + 4, 112, 1);
+  });
+  reveal(2, () => {                                      // 2 white brick walls with a stone band
+    px(WHITE, x0, wt, 108, wallH);
+    for (let y = wt + 3; y < base - 5; y += 3) for (let x = x0 + (((y - wt) / 3) % 2 ? 0 : 4); x < x0 + 104; x += 8) px('#e4e0d5', x, y, 5, 1);
+    px('#dedad0', x0 + 30, wt, 14, wallH - 5); px('#dedad0', x0 + 64, wt, 14, wallH - 5);     // recessed porches
+    px('#d3cab6', x0, base - 5, 108, 5);
+    for (let i = 0; i < 18; i++) px('#bfb6a2', x0 + i * 6 + 2, base - 4, 1, 3);
+    px('#c9c5ba', x0, wt, 1, wallH); px('#c9c5ba', x0 + 107, wt, 1, wallH);
+  });
+  reveal(3, () => {                                      // 3 black double door
+    px(BLACK, cx - 7, base - 17, 14, 17);
+    px('#2a2c33', cx - 6, base - 16, 5, 16); px('#2a2c33', cx + 1, base - 16, 5, 16);
+    const gl = night ? '#ffd56e' : '#5c7286';
+    px(gl, cx - 5, base - 15, 3, 9); px(gl, cx + 2, base - 15, 3, 9);
+    px('#d9b45a', cx - 1, base - 8, 2, 2);
+    // two stone steps down from the door to the driveway
+    px('#e3dccb', cx - 9, base + 1, 18, 2); px('#b3aa96', cx - 9, base + 3, 18, 1);
+    px('#d9d2c0', cx - 11, base + 4, 22, 2); px('#a89f8c', cx - 11, base + 6, 22, 1);
+    px('#efe9da', cx - 9, base + 1, 18, 1); px('#e6dfcf', cx - 11, base + 4, 22, 1);
+  });
+  const win = (wx, w, h) => {
+    px(BLACK, wx, base - 8 - h, w, h); px(night ? '#ffd56e' : '#3d5266', wx + 1, base - 7 - h, w - 2, h - 2);
+    if (!night) px('#8fb0c9', wx + 2, base - 6 - h, 2, 2);
+    px(BLACK, wx + (w >> 1), base - 8 - h, 1, h); px(BLACK, wx, base - 8 - (h >> 1), w, 1);
+  };
+  reveal(4, () => { win(x0 + 8, 14, 11); win(x0 + 32, 10, 10); win(x0 + 66, 10, 10); win(x0 + 86, 14, 11); });   // 4 windows
+  reveal(5, () => {                                      // 5 charcoal roof, three gables, porch roofs
+    const rh = 24;
+    for (let y = 0; y < rh; y++) {
+      const half = Math.round(lerp(26, 58, y / (rh - 1))), yy = wt - rh + y;
+      px(Math.floor(y / 2) % 2 ? R1 : R2, cx - half, yy, half * 2, 1);
+      if (y % 2) for (let xx = cx - half + (y % 4 === 1 ? 1 : 4); xx < cx + half; xx += 6) px(R3, xx, yy);
+    }
+    px(R3, cx - 58, wt - 1, 116, 2);
+    const gable = (gx, w, h) => {
+      const mid = gx + w / 2;
+      for (let y = 0; y <= h; y++) {
+        const half = Math.round((w / 2 + 2) * y / h), yy = wt - h + y;
+        px(WHITE, mid - half, yy, half * 2, 1);
+        px(R3, mid - half - 1, yy, 3, 1); px(R3, mid + half - 2, yy, 3, 1);
+      }
+      px(BLACK, Math.round(mid) - 1, wt - Math.round(h * 0.5), 2, 4);
+    };
+    gable(x0 - 1, 32, 20); gable(x0 + 77, 32, 20); gable(x0 + 43, 22, 26);
+    for (const p of [x0 + 30, x0 + 64]) { px(R1, p, wt, 14, 4); px(R3, p, wt + 4, 14, 1); }
+    for (const p of [x0 + 30, x0 + 43, x0 + 64, x0 + 77]) px('#7a5234', p, wt + 5, 1, wallH - 5);   // cedar posts
+  });
+  reveal(6, () => {                                      // 6 chimney
+    const chx = cx + 16, top = wt - 30;
+    px('#e9e6de', chx, top + 2, 6, 10); px('#cfcbc0', chx + 4, top + 2, 2, 10); px(BLACK, chx - 1, top, 8, 2);
+  });
+  reveal(7, () => {                                      // 7 front yard: pavers, gravel circle with the palm, young trees
+    const bx = cx + 34, by = base + 34;
+    for (let y = -6; y <= 6; y++) for (let x = -11; x <= 11; x++) {
+      const d = (x * x) / 121 + (y * y) / 36;
+      if (d <= 1) px(d < 0.28 ? '#efeee9' : (((x * 7 + y * 13) & 3) === 0 ? '#5a5b63' : '#3a3b42'), bx + x, by + y);
+    }
+    px('#6b4a2d', bx, by - 5, 1, 5);
+    for (const [dx, dy] of [[-7, -5], [-6, -9], [-3, -11], [0, -12], [3, -11], [6, -9], [7, -5], [-5, -3], [5, -3]])
+      for (const t of [0.35, 0.7, 1]) px(t === 1 ? '#6ccb58' : '#3f9a3c', bx + dx * t, by - 5 + (dy + 5) * t);
+    for (const tx of [cx - 24, cx + 22]) { px('#3a3b42', tx - 3, base + 13, 7, 2); px('#6b4a2d', tx, base + 6, 1, 8); px('#4fae45', tx - 2, base + 1, 5, 6); px('#74d05a', tx - 1, base + 1, 2, 2); }
+    for (const sx of [x0 + 9, x0 + 87]) { px('#3f9a3c', sx, base - 3, 12, 3); px('#6ccb58', sx + 2, base - 4, 3, 1); px('#6ccb58', sx + 8, base - 4, 2, 1); }
+  });
+  reveal(8, () => {                                      // 8 porch lanterns + path lights
+    const lit = night ? '#fff0a8' : '#ffe28a';
+    for (const lx of [cx - 11, cx + 9]) { px(BLACK, lx, base - 16, 2, 6); px(lit, lx, base - 14, 2, 3); }
+    for (const ly of [base + 13, base + 25]) for (const sd of [-1, 1]) {      // path lights along both edges of the driveway
+      const lx = Math.round(pathX(ly) + sd * 10.5);
+      px('#2a2b31', lx - 1, ly, 3, 1); px(BLACK, lx, ly - 4, 1, 4); px(BLACK, lx - 1, ly - 6, 3, 2); px(lit, lx, ly - 6, 1, 1);
+    }
+  });
+}
+
+/* ============================================================
+   Characters: she goes where tapped, he follows her
+   ============================================================ */
+const her = { x: 0, y: 0, dir: 'down', flip: false, moving: false, step: 0, carry: null };
+const him = { x: 0, y: 0, dir: 'down', flip: false, moving: false, step: 0 };
+let target = null, trail = [], onArrive = null, route = [];
+
+function face(ch, dx, dy){
+  if (Math.abs(dx) > Math.abs(dy)) { ch.dir = 'side'; ch.flip = dx < 0; }
+  else ch.dir = dy < 0 ? 'up' : 'down';
+}
+/* the pen fence can only be crossed at the gate, and the way there goes around the right side of the house */
+function inPen(x, y){ return y < PEN.y1 + 1; }
+function planPath(x0, y0, x1, y1){
+  const a = inPen(x0, y0), b = inPen(x1, y1);
+  if (a === b) return [{ x: x1, y: y1 }];
+  const gx = PEN.gx, front = LOT.base + 14;
+  const C1 = { x: gx, y: front }, G1 = { x: gx, y: PEN.y1 + 7 }, G2 = { x: gx - 12, y: PEN.y1 - 12 };
+  const nearHouse = (x, y) => x < gx - 6 && y < front - 2;
+  if (!a) {                                             // going in
+    const out = [];
+    if (nearHouse(x0, y0)) out.push({ x: x0, y: front });
+    if (x0 < gx - 6 || y0 > front) out.push(C1);
+    return out.concat([G1, G2, { x: x1, y: y1 }]);
+  }
+  const out = [G2, G1];                                 // coming out
+  if (x1 < gx - 6 || y1 > front) out.push(C1);
+  if (nearHouse(x1, y1)) out.push({ x: x1, y: front });
+  out.push({ x: x1, y: y1 });
+  return out;
+}
+/* the pond: nobody walks in the water; paths go around it */
+const inPond = (x, y, m = 3) => ((x - POND.x) / (POND.rx + m)) ** 2 + ((y - POND.y) / (POND.ry + m)) ** 2 < 1;
+function crossesPond(x0, y0, x1, y1){ for (let i = 1; i < 24; i++) if (inPond(lerp(x0, x1, i / 24), lerp(y0, y1, i / 24))) return true; return false; }
+function aroundPond(pts, x0, y0){
+  const out = []; let px0 = x0, py0 = y0;
+  for (const p of pts) {
+    if (crossesPond(px0, py0, p.x, p.y)) {
+      const cands = [[POND.x, POND.y - POND.ry - 9], [POND.x, POND.y + POND.ry + 9], [POND.x - POND.rx - 9, POND.y], [POND.x + POND.rx + 9, POND.y]]
+        .filter(([cx, cy]) => cx > 5 && cx < IW - 5 && cy < IH - 2);
+      let best = null, bl = 1e9;
+      for (const [cx, cy] of cands) if (!crossesPond(px0, py0, cx, cy) && !crossesPond(cx, cy, p.x, p.y)) {
+        const l = Math.hypot(cx - px0, cy - py0) + Math.hypot(p.x - cx, p.y - cy); if (l < bl) { bl = l; best = { x: cx, y: cy }; }
+      }
+      if (!best) for (const a of cands) for (const b of cands) if (a !== b && !crossesPond(px0, py0, a[0], a[1]) && !crossesPond(a[0], a[1], b[0], b[1]) && !crossesPond(b[0], b[1], p.x, p.y)) {
+        const l = Math.hypot(a[0] - px0, a[1] - py0) + Math.hypot(b[0] - a[0], b[1] - a[1]) + Math.hypot(p.x - b[0], p.y - b[1]);
+        if (l < bl) { bl = l; best = [{ x: a[0], y: a[1] }, { x: b[0], y: b[1] }]; }
+      }
+      if (best) out.push(...[].concat(best));
+    }
+    out.push(p); px0 = p.x; py0 = p.y;
+  }
+  return out;
+}
+function pushOutOfPond(ch){
+  if (!POND || !inPond(ch.x, ch.y)) return;
+  const nx = (ch.x - POND.x) / (POND.rx + 3), ny = (ch.y - POND.y) / (POND.ry + 3), d = Math.hypot(nx, ny) || 1;
+  ch.x = POND.x + nx / d * (POND.rx + 3.2); ch.y = POND.y + ny / d * (POND.ry + 3.2);
+}
+function walkTo(x, y, cb){
+  let dx = clamp(x, 6, IW - 6), dy = clamp(y, PEN.y0 + 10, IH - 3);
+  if (inPond(dx, dy)) { const n = Math.hypot((dx - POND.x) / POND.rx, (dy - POND.y) / POND.ry) || 1; dx = POND.x + (dx - POND.x) / n * 1.25; dy = POND.y + (dy - POND.y) / n * 1.35; }
+  route = aroundPond(planPath(her.x, her.y, dx, dy), her.x, her.y);
+  target = route.shift(); onArrive = cb || null; her.chase = null;
+}
+/* ---------- Horse rides: lead a horse, then tap it again to hop on ---------- */
+let riding = null, nextHoof = 0;
+const isHorse = a => a.k.name.includes('horse');
+function mount(a){
+  if (!a.leashed || riding) return;
+  riding = a; a.riding = true; target = null; route = []; onArrive = null; her.chase = null;
+  her.x = a.x; her.y = a.y; pushOutOfPond(her); trail = [her.x, her.y];
+  leads = [a].concat(leads.filter(o => o !== a));
+  puff(a.x, a.y - 16, 10, ['#fff6d6', '#ffd76a', '#ffffff']); sfx('mount');
+  say("Giddy up!", her, 1400); setBanner();
+}
+function dismount(quiet){
+  const a = riding; if (!a) return;
+  riding = null; a.riding = false;
+  const side = a.flip ? 1 : -1;
+  her.x = clamp(a.x + side * 11, 8, IW - 8); her.y = a.y + 2; pushOutOfPond(her); trail = [her.x, her.y];
+  if (!quiet) { puff(her.x, her.y - 6, 6, ['#fff6d6', '#ffd76a']); sfx('drop'); say("Good horse!", her, 1300); }
+  setBanner();
+}
+
+/* ---------- Dance break: tap either of them ---------- */
+let danceUntil = 0, danceStart = 0, charTap = null, nextNote = 0;
+const dancing = () => performance.now() < danceUntil;
+function startDance(len = 4600){
+  const now = performance.now();
+  if (riding) dismount(true);
+  danceStart = now; danceUntil = now + len; charTap = null;
+  target = null; route = []; onArrive = null; her.chase = null; her.moving = false; him.moving = false;
+  for (const a of ANIMALS) a.danceUntil = (!a.leashed && Math.hypot(a.x - her.x, a.y - her.y) < 75) ? danceUntil : 0;
+  say("Dance break!", Math.random() < 0.5 ? her : him, 1500); sfx('dance');
+}
+
+/* ---------- Fishing: tap the water ---------- */
+const fishing = { phase: null, t: 0, bx: 0, by: 0, mark: 0.5, dir: 1, caught: 0, color: '#f28a3a', fx: 0, fy: 0 };
+const meterEl = document.getElementById('meter'), markEl = meterEl.querySelector('.mark');
+const ZONE = [0.41, 0.59];
+function startFishing(x, y){
+  if (riding) dismount(true);
+  // stand on the shore nearest to where she is, facing the water
+  const ang = Math.atan2(her.y - POND.y, (her.x - POND.x) * (POND.ry / POND.rx));
+  const sx = POND.x + Math.cos(ang) * (POND.rx + 4), sy = POND.y + Math.sin(ang) * (POND.ry + 4);
+  const k = Math.min(0.62, Math.hypot((x - POND.x) / POND.rx, (y - POND.y) / POND.ry)), ba = Math.atan2(y - POND.y, x - POND.x);
+  fishing.bx = POND.x + Math.cos(ba) * POND.rx * k; fishing.by = POND.y + Math.sin(ba) * POND.ry * k;
+  fishing.phase = 'walk';
+  walkTo(sx, sy, () => {
+    fishing.phase = 'wait'; fishing.t = 0;
+    const dx = fishing.bx - her.x, dy = fishing.by - her.y;
+    face(her, dx, dy); sfx('cast'); say("Let's fish!", her, 1300);
+  });
+}
+function stopFishing(){ fishing.phase = null; meterEl.classList.remove('show'); }
+function hook(){
+  const p = fishing.mark;
+  meterEl.classList.remove('show');
+  if (p >= ZONE[0] && p <= ZONE[1]) {
+    fishing.phase = 'reel'; fishing.t = 0; fishing.color = ['#f28a3a', '#6aa8e8', '#f2c94c', '#e86a8a'][Math.floor(Math.random() * 4)];
+    sfx('catch');
+  } else {
+    fishing.phase = null; sfx('miss'); say("Aw, it got away!", her, 1500);
+  }
+}
+function fishSprite(color, Z){
+  const c = document.createElement('canvas'); c.width = 16 * Z; c.height = 10 * Z;
+  const cc = c.getContext('2d');
+  const rows = ["....OOOOO.......", "..OOFFFFFOO...OO", ".OFFFFFFFFFO.OFO", "OFEFFFFFFFFFOFFO", "OFFFFFFFFFFFFFFO", "OFFFFLLLLFFFOFFO", ".OFFLLLLLLFO.OFO", "..OOFFFFFOO...OO", "....OOOOO.......", "................"];
+  const pal = { O: '#2a1d14', F: color, L: '#fff3d6', E: '#14100c' };
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (pal[ch]) { cc.fillStyle = pal[ch]; cc.fillRect(x * Z, y * Z, Z, Z); } }));
+  return c;
+}
+function awardFish(){
+  const msgs = CONFIG.fishMessages, i = fishing.caught % msgs.length; fishing.caught++;
+  cardOpen = true; cardEl.classList.add('fish');
+  cardEl.querySelector('.from').textContent = 'YOU CAUGHT A FISH!';
+  cardEl.querySelector('.pic').src = fishSprite(fishing.color, 6).toDataURL();
+  cardEl.querySelector('.msg').textContent = msgs[i];
+  cardEl.classList.add('show'); sfx('letter');
+}
+function updateFishing(dt){
+  if (!fishing.phase) return;
+  fishing.t += dt;
+  if (fishing.phase === 'wait' && fishing.t > 3) {          // a bite! the meter appears
+    fishing.phase = 'meter'; fishing.t = 0; fishing.mark = Math.random() < 0.5 ? 0.05 : 0.95; fishing.dir = fishing.mark < 0.5 ? 1 : -1;
+    alertUntil = performance.now() + 900; sfx('bite'); meterEl.classList.add('show');
+  }
+  if (fishing.phase === 'meter') {                            // the marker flies up and down
+    fishing.mark += fishing.dir * dt * 0.9;
+    if (fishing.mark > 1) { fishing.mark = 1; fishing.dir = -1; }
+    if (fishing.mark < 0) { fishing.mark = 0; fishing.dir = 1; }
+    markEl.style.top = (fishing.mark * 100) + '%';
+  }
+  if (fishing.phase === 'reel') {                             // the fish jumps out of the water to her
+    const k = Math.min(1, fishing.t / 0.9);
+    fishing.fx = lerp(fishing.bx, her.x, k); fishing.fy = lerp(fishing.by, her.y - 24, k) - Math.sin(k * Math.PI) * 26;
+    if (k >= 1) { fishing.phase = 'show'; heart(her.x, her.y - 30); awardFish(); }
+  }
+  if (fishing.phase === 'show' && !cardOpen) fishing.phase = null;
+}
+function drawFishing(now){
+  if (!fishing.phase || fishing.phase === 'walk') return;
+  const right = fishing.bx >= her.x;
+  const hx = her.x + (right ? 4 : -4), hy = her.y - 10, tx = her.x + (right ? 13 : -13), ty = her.y - 24;
+  for (let i = 0; i <= 12; i++) { const t = i / 12; px('#7a4e2c', lerp(hx, tx, t), lerp(hy, ty, t), 1, 1); }      // rod
+  if (fishing.phase !== 'reel' && fishing.phase !== 'show') {
+    const bite = fishing.phase === 'meter', dip = bite ? Math.round(Math.abs(Math.sin(now / 90))) : Math.round(Math.sin(now / 500) * 0.6);
+    const bx = Math.round(fishing.bx), by = Math.round(fishing.by) + dip;
+    for (let i = 0; i <= 30; i++) {                                                                               // line
+      const t = i / 30, lx = lerp(tx, bx, t), ly = lerp(ty, by, t) + Math.sin(t * Math.PI) * 4;
+      g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillRect(Math.round(lx * 2) / 2, Math.round(ly * 2) / 2, 0.5, 0.5);
+    }
+    const rr = ((now / 1000) % 1.4) / 1.4 * (bite ? 7 : 4);                                                       // ripples
+    g.strokeStyle = `rgba(214,240,255,${0.7 - rr / 10})`; g.lineWidth = 0.5;
+    g.beginPath(); g.ellipse(bx + 0.5, by + 1.5, 2 + rr, 1 + rr * 0.45, 0, 0, Math.PI * 2); g.stroke();
+    px('#ffffff', bx - 1, by - 2, 3, 1); px('#e8382c', bx - 1, by - 1, 3, 2);                                   // bobber
+  } else if (fishing.phase === 'reel') {
+    g.save(); g.translate(Math.round(fishing.fx), Math.round(fishing.fy)); g.rotate(fishing.t * 9); g.drawImage(fishSprite(fishing.color, 1), -8, -5); g.restore();
+    if (fishing.t < 0.2) puff(fishing.bx, fishing.by, 2, ['#d6f0ff', '#ffffff']);
+  }
+}
+
+/* ---------- Dance rhythm game: apples fall to the beat of the song; one miss and the dance is over ---------- */
+const RH_BEAT = 0.5108, RH_APPROACH = 1.7, RH_WIN = 0.19;
+const RH_CHART = "331,2,434,2,536,1,639,2,738,0,844,3,946,3,1050,1,1152,2,1254,0,1356,0,1459,2,1562,3,1665,3,1766,0,1869,2,1920,1,1971,2,2022,0,2123,3,2177,2,2229,3,2280,2,2330,0,2382,0,2433,3,2486,1,2536,3,2587,1,2639,0,2689,2,2741,0,2792,1,2844,0,2947,2,2998,2,3049,0,3100,2,3151,1,3203,2,3254,1,3305,1,3356,3,3460,1,3610,3,3664,0,3715,3,3766,3,3870,1,3921,1,3972,0,4023,2,4125,3,4174,2,4225,2,4279,3,4332,1,4382,2,4536,0,4588,3,4690,1,4740,0,4793,3,4954,2,5100,3,5151,2,5255,1,5306,2,5357,1,5408,3,5459,2,5511,2,5562,1,5613,1,5665,0,5716,1,5767,0,5870,1,5971,3,6127,0,6177,1,6229,0,6280,3,6331,0,6382,1,6433,1,6589,3,6742,2,6793,3,6844,2,6895,1,6946,0,6997,1,7048,0,7100,1,7152,2,7203,1,7254,2,7306,1,7356,0,7406,1,7455,2,7562,1,7664,1,7767,0,7869,1,7971,0,8024,3,8075,0,8126,2,8177,2,8228,3,8279,1,8437,0,8485,3,8536,3,8639,1,8690,3,8741,0,8792,0,8947,3,8998,1,9049,3,9100,3,9151,2,9203,1,9305,2,9356,3,9408,3,9460,1,9510,0,9613,3,9664,1,9715,2,9870,3,10023,3,10075,1,10126,0,10177,2,10279,0,10382,0,10434,2,10485,1,10536,0,10587,1,10638,0,10689,2,10739,3,10844,0,10947,1,10998,0,11048,1,11100,3,11148,1,11202,2,11255,1,11306,2,11357,1,11408,2,11459,1,11613,2,11665,1,11716,1,11819,3,11870,0,11921,3,11970,3,12023,1,12074,0,12127,1,12177,0,12228,0,12280,1,12331,3,12485,2,12536,2,12690,0,12741,3,12895,0,12946,1,13105,3,13160,0,13306,3,13357,2,13511,1,13562,2,13613,3,13664,2,13767,1,13818,0,13869,3,13920,0,13971,1,14075,1,14126,2,14177,3,14331,0,14382,1,14434,0,14536,1,14587,0,14742,3,14894,3,14998,2,15049,3,15100,1,15151,0,15202,3,15254,1,15305,2,15408,0,15460,0,15511,2,15562,2,15611,1,15768,2,15870,2,15972,1,16075,0,16126,0,16177,1,16228,0,16280,0,16331,1,16382,2,16433,1,16485,2,16587,1,16638,0,16691,2,16742,1,16793,2,16844,1,16895,1,16946,0,16997,0,17049,2,17100,0,17151,2,17305,2,17408,3,17459,2,17510,1,17561,0,17613,3,17665,2,17716,3,17870,0,18023,1".split(',').map(Number);          // [time in 1/100 s, lane] pairs, from the song's beats
+const RH_NOTES = []; for (let i = 0; i < RH_CHART.length; i += 2) RH_NOTES.push({ t: RH_CHART[i] / 100, l: RH_CHART[i + 1] });
+const RH_COLS = [['#e8382c', '#a8201a'], ['#7ccf4a', '#3f8f2a'], ['#f4c534', '#c08a14'], ['#ff7eb0', '#cc4a80']];
+const APPLE_ROWS = ["....kk.gg.", ".....kgg..", ".ooo.k.oo.", "oCCCoooCCo", "oChCCCCCCo", "oChCCCCCCo", "oCCCCCCCDo", ".oCCCCCDo.", ".ooCDDDoo.", "...ooooo.."];
+function drawApple(c, x, y, u, l, alpha = 1){
+  const pal = { o: '#2a1d14', C: RH_COLS[l][0], D: RH_COLS[l][1], h: '#fff6e6', k: '#5a3a20', g: '#4fae45' };
+  c.globalAlpha = alpha;
+  APPLE_ROWS.forEach((row, ry) => { for (let rx = 0; rx < 10; rx++) { const p = pal[row[rx]]; if (p) { c.fillStyle = p; c.fillRect(Math.round(x + (rx - 5) * u), Math.round(y + (ry - 5) * u), Math.ceil(u), Math.ceil(u)); } } });
+  c.globalAlpha = 1;
+}
+const rhEl = document.getElementById('rhythm'), rhCv = rhEl.querySelector('canvas'), rhC = rhCv.getContext('2d');
+const rhPads = [...rhEl.querySelectorAll('.pads button')], rhScore = rhEl.querySelector('.score b'), rhJudge = rhEl.querySelector('.judge'), rhResult = rhEl.querySelector('.result');
+rhPads.forEach((b, l) => { const c = document.createElement('canvas'); c.width = c.height = 40; drawApple(c.getContext('2d'), 20, 20, 4, l); b.style.backgroundImage = `url(${c.toDataURL()})`; b.style.borderColor = RH_COLS[l][1]; });
+const rhythm = { on: false, t: -1, score: 0, combo: 0, idx: 0, hit: [], flash: [0, 0, 0, 0], fx: [], over: false, ct: -1, ctAt: 0, missed: -1 };
+let songEl = null, songGain = null;
+function fadeMusic(to, secs){
+  if (!musicEl) return;
+  if (musicGain && actx) { const g0 = musicGain.gain; g0.cancelScheduledValues(actx.currentTime); g0.setValueAtTime(g0.value, actx.currentTime); g0.linearRampToValueAtTime(to, actx.currentTime + secs); }
+  else musicEl.volume = to;
+}
+function startRhythm(){
+  if (rhythm.on) return;
+  audioInit();
+  target = null; route = []; onArrive = null; her.chase = null;
+  if (fishing.phase) stopFishing();
+  startDance(1e9);
+  Object.assign(rhythm, { on: true, t: -1, score: 0, combo: 0, idx: 0, hit: RH_NOTES.map(() => false), flash: [0, 0, 0, 0], fx: [], over: false, ct: -1, ctAt: 0, missed: -1 });
+  rhScore.textContent = '0'; rhJudge.textContent = 'Get ready!'; rhResult.classList.remove('show');
+  // keep them in view: the game goes on the other half of the screen
+  const top = her.y * SCALE > window.innerHeight * 0.52;
+  rhEl.classList.toggle('top', top); rhEl.classList.toggle('bottom', !top);
+  banner.style.opacity = 0; foundEl.style.visibility = 'hidden';
+  rhEl.classList.add('show');
+  requestAnimationFrame(() => { const r = rhCv.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2); rhCv.width = Math.round(r.width * d); rhCv.height = Math.round(r.height * d); });
+  // the dance song takes over from the background music (which pauses, and picks up again after)
+  fadeMusic(0, 0.4); setTimeout(() => { if (rhythm.on && musicEl) musicEl.pause(); }, 450);
+  if (CONFIG.danceSong) {
+    if (!songEl) {
+      songEl = new Audio(CONFIG.danceSong); songEl.preload = 'auto'; songEl.setAttribute('playsinline', '');
+      songEl.addEventListener('ended', () => { if (rhythm.on && !rhythm.over) endRhythm(true); });
+      if (actx) { try { songGain = actx.createGain(); actx.createMediaElementSource(songEl).connect(songGain); songGain.connect(master); } catch (_) { songGain = null; } }
+    }
+    if (songGain) { songGain.gain.cancelScheduledValues(actx.currentTime); songGain.gain.setValueAtTime(CONFIG.danceVolume, actx.currentTime); } else songEl.volume = CONFIG.danceVolume;
+    songEl.currentTime = 0;
+    const p = songEl.play(); if (p && p.catch) p.catch(() => {});
+  }
+  say("Dance with me!", Math.random() < 0.5 ? her : him, 1600);
+}
+function songTime(now){
+  if (!songEl) return rhythm.t + 1 / 60;
+  const ct = songEl.currentTime;
+  if (ct !== rhythm.ct) { rhythm.ct = ct; rhythm.ctAt = now; }
+  return ct + (songEl.paused ? 0 : Math.min(0.3, (now - rhythm.ctAt) / 1000));   // smooth between the audio clock's ticks
+}
+function rhPress(l){
+  if (!rhythm.on || rhythm.over) return;
+  rhythm.flash[l] = performance.now(); rhPads[l].classList.add('on'); setTimeout(() => rhPads[l].classList.remove('on'), 90);
+  const t = rhythm.t; let best = -1, bd = 1e9;
+  for (let i = rhythm.idx; i < RH_NOTES.length && RH_NOTES[i].t < t + RH_WIN + 0.05; i++) {
+    const n = RH_NOTES[i]; if (rhythm.hit[i] || n.l !== l) continue;
+    const d = Math.abs(n.t - t); if (d < RH_WIN && d < bd) { bd = d; best = i; }
+  }
+  if (best < 0) return;                                 // an extra tap with nothing there is fine
+  rhythm.hit[best] = true; rhythm.score++; rhythm.combo++;
+  rhScore.textContent = rhythm.score;
+  rhJudge.textContent = (bd < 0.07 ? 'Perfect!' : 'Nice!') + (rhythm.combo >= 5 ? `  x${rhythm.combo}` : '');
+  rhythm.fx.push({ l, t: performance.now() });
+  sfx('hit');
+  if (rhythm.combo % 10 === 0) heart((her.x + him.x) / 2, Math.min(her.y, him.y) - 28);
+}
+function endRhythm(full){
+  if (rhythm.over) return;
+  rhythm.over = true;
+  const best = (() => { try { const b = Math.max(rhythm.score, +localStorage.getItem('ourhome_dance_best') || 0); localStorage.setItem('ourhome_dance_best', b); return b; } catch (_) { return rhythm.score; } })();
+  rhResult.innerHTML = full
+    ? `<b>You danced the whole song!</b><span>&#9829; ${rhythm.score} apples &#9829;</span>`
+    : `<b>Missed one!</b><span>${rhythm.score} apples in a row</span><span style="color:#ffe3a6">best: ${best}</span>`;
+  rhResult.classList.add('show'); rhJudge.textContent = '';
+  if (full) { sfx('finale'); for (let i = 0; i < 4; i++) setTimeout(() => heart((her.x + him.x) / 2 + (Math.random() - 0.5) * 16, Math.min(her.y, him.y) - 28), i * 250); }
+  else sfx('miss');
+  if (songEl && !songEl.paused) {                        // fade the dance song out
+    if (songGain && actx) { songGain.gain.setValueAtTime(songGain.gain.value, actx.currentTime); songGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.8); }
+    setTimeout(() => { if (rhythm.over) songEl.pause(); }, 850);
+  }
+  setTimeout(closeRhythm, full ? 3600 : 2600);
+}
+function closeRhythm(){
+  if (!rhythm.on) return;
+  if (songEl) songEl.pause();
+  rhythm.on = false; rhEl.classList.remove('show'); rhResult.classList.remove('show');
+  danceUntil = performance.now(); ANIMALS.forEach(a => a.danceUntil = 0);
+  banner.style.opacity = ''; foundEl.style.visibility = ''; setBanner();
+  if (musicEl && !muted) { const p = musicEl.play(); if (p && p.catch) p.catch(() => {}); fadeMusic(CONFIG.musicVolume, 1.5); }   // the background song picks up where it left off
+  else if (musicEl) fadeMusic(CONFIG.musicVolume, 0.1);
+}
+function updateRhythm(now){
+  if (!rhythm.on) return;
+  if (!rhythm.over) {
+    rhythm.t = songTime(now);
+    if (rhythm.t > 2.2 && rhJudge.textContent === 'Get ready!') rhJudge.textContent = '';
+    while (rhythm.idx < RH_NOTES.length && rhythm.hit[rhythm.idx]) rhythm.idx++;
+    const n = RH_NOTES[rhythm.idx];
+    if (n && rhythm.t - n.t > RH_WIN) { rhythm.missed = rhythm.idx; endRhythm(false); }
+    else if (!n && rhythm.t > RH_NOTES[RH_NOTES.length - 1].t + 1 && (!songEl || songEl.ended || rhythm.t > 184.5)) endRhythm(true);
+  }
+  drawRhythm(now);
+}
+function drawRhythm(now){
+  const c = rhC, Wc = rhCv.width, Hc = rhCv.height; if (!Wc) return;
+  c.clearRect(0, 0, Wc, Hc);
+  const lw = Wc / 4, u = Math.max(2, Math.floor(lw * 0.075)), hitY = Hc - u * 8;
+  for (let l = 0; l < 4; l++) {                         // lanes
+    const x = l * lw, fl = Math.max(0, 1 - (now - rhythm.flash[l]) / 160);
+    c.fillStyle = l % 2 ? 'rgba(255,248,230,0.05)' : 'rgba(255,248,230,0.1)'; c.fillRect(x, 0, lw, Hc);
+    if (fl) { const gr = c.createLinearGradient(0, hitY, 0, 0); gr.addColorStop(0, RH_COLS[l][0] + '88'); gr.addColorStop(1, RH_COLS[l][0] + '00'); c.globalAlpha = fl; c.fillStyle = gr; c.fillRect(x, 0, lw, hitY); c.globalAlpha = 1; }
+    drawApple(c, x + lw / 2, hitY, u, l, 0.28);         // the target outline
+  }
+  c.fillStyle = 'rgba(241,213,139,0.85)'; c.fillRect(0, Math.round(hitY + 6 * u), Wc, Math.max(2, u / 2));
+  // falling apples
+  for (let i = rhythm.idx; i < RH_NOTES.length; i++) {
+    const n = RH_NOTES[i], dtn = n.t - rhythm.t; if (dtn > RH_APPROACH) break;
+    if (rhythm.hit[i]) continue;
+    const y = hitY - dtn / RH_APPROACH * (hitY + 6 * u), missed = rhythm.over && i === rhythm.missed;
+    drawApple(c, (n.l + 0.5) * lw, y, u, n.l, missed ? 0.45 + 0.4 * Math.abs(Math.sin(now / 90)) : 1);
+  }
+  // hit bursts
+  for (let i = rhythm.fx.length - 1; i >= 0; i--) {
+    const f = rhythm.fx[i], k = (now - f.t) / 380; if (k > 1) { rhythm.fx.splice(i, 1); continue; }
+    const cx = (f.l + 0.5) * lw;
+    c.globalAlpha = 1 - k; c.fillStyle = RH_COLS[f.l][0];
+    for (let j = 0; j < 8; j++) { const a = j / 8 * Math.PI * 2, r = lw * (0.18 + k * 0.35); c.fillRect(Math.round(cx + Math.cos(a) * r - u), Math.round(hitY + Math.sin(a) * r - u), u * 2, u * 2); }
+    c.fillStyle = '#fff8e6'; c.fillRect(Math.round(cx - u * 1.5), Math.round(hitY - u * 1.5 - k * lw * 0.4), u * 3, u * 3);
+    c.globalAlpha = 1;
+  }
+}
+rhPads.forEach((b, l) => b.addEventListener('pointerdown', e => { e.preventDefault(); rhPress(l); }));
+rhEl.querySelector('.quit').addEventListener('click', () => { if (rhythm.on && !rhythm.over) { rhythm.over = true; closeRhythm(); } });
+window.addEventListener('keydown', e => { const l = { d: 0, f: 1, j: 2, k: 3, ArrowLeft: 0, ArrowDown: 1, ArrowUp: 2, ArrowRight: 3 }[e.key]; if (l !== undefined) rhPress(l); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && rhythm.on && !rhythm.over) { rhythm.over = true; closeRhythm(); } });
+
+function updateChars(dt){
+  const sp = CONFIG.walkSpeed * (riding ? 1.9 : 1);
+  if (dancing() || (fishing.phase && fishing.phase !== 'walk')) { her.moving = false; him.moving = false; return; }
+  // chasing an animal (to leash it, or to get a stolen item back)
+  if (her.chase) {
+    const a = her.chase;
+    if (inPen(her.x, her.y) && !inPen(a.x, a.y)) {         // leave the pen through the gate first
+      if (!route.length && (!target || target.chase)) { route = planPath(her.x, her.y, a.x, a.y); route.pop(); target = route.shift() || null; }
+    } else if (!route.length) {
+      const ang = Math.atan2(her.y - a.y, her.x - a.x), off = her.chaseMode === 'catch' ? 2 : 10;
+      target = { x: clamp(a.x + Math.cos(ang) * off, 6, IW - 6), y: clamp(a.y + Math.sin(ang) * off * 0.5, PEN.y0 + 10, IH - 3), chase: true };
+      onArrive = null;
+    }
+    if (her.chaseMode === 'leash' && Math.hypot(her.x - a.x, her.y - a.y) < 20) attachLeash(a);
+    else if (her.chaseMode === 'feed' && Math.hypot(her.x - a.x, her.y - a.y) < 20) feed(a);
+  }
+  // her
+  if (target) {
+    const dx = target.x - her.x, dy = target.y - her.y, d = Math.hypot(dx, dy);
+    if (d < 1) {
+      her.x = target.x; her.y = target.y;
+      if (route.length) { target = route.shift(); }
+      else {
+        her.moving = false; target = null;
+        const cb = onArrive; onArrive = null; if (cb) cb();
+      }
+    } else {
+      const s = Math.min(d, sp * dt);
+      her.x += dx / d * s; her.y += dy / d * s; pushOutOfPond(her); her.moving = true; face(her, dx, dy);
+      her.step += dt * 7;
+      trail.push(her.x, her.y); if (trail.length > 900) trail.splice(0, 2);
+    }
+  } else her.moving = false;
+  // him: follow her footsteps a little behind; when she stops, step up beside her
+  let tx, ty;
+  if (her.moving) {
+    let acc = 0, i = trail.length - 2;
+    for (; i > 1; i -= 2) { acc += Math.hypot(trail[i] - trail[i - 2], trail[i + 1] - trail[i - 1]); if (acc > 17) break; }
+    tx = trail[i] ?? her.x - 16; ty = trail[i + 1] ?? her.y;
+  } else {
+    const side = him.x <= her.x ? -1 : 1;
+    tx = clamp(her.x + side * 15, 8, IW - 8); ty = her.y;
+  }
+  const dx = tx - him.x, dy = ty - him.y, d = Math.hypot(dx, dy);
+  if (d > 0.8) {
+    const s = Math.min(d, sp * 1.08 * dt);
+    him.x += dx / d * s; him.y += dy / d * s; pushOutOfPond(him); him.moving = true; face(him, dx, dy); him.step += dt * 7;
+  } else {
+    him.moving = false;
+    if (!her.moving) { him.dir = her.dir === 'up' ? 'up' : 'down'; if (her.dir === 'side') { him.dir = 'down'; } }
+  }
+  if (!her.moving && !target && her.dir === 'side') her.dir = 'down';
+}
+function drawChar(ch, who){
+  let f = ch.moving ? (Math.floor(ch.step) % 2 ? 1 : 2) : 0, bob = ch.moving && f ? -1 : 0;
+  if (dancing()) {                                   // dance: hop, step and turn side to side
+    const per = rhythm.on ? RH_BEAT : 0.25, t = rhythm.on ? Math.max(0, rhythm.t) : (performance.now() - danceStart) / 1000;
+    const beat = Math.floor(t / per) + (who === 'him' ? 1 : 0);
+    ch.dir = beat % 4 === 3 ? 'down' : 'side'; ch.flip = beat % 2 === 0; f = 1 + (beat % 2);
+    bob = -Math.round(Math.abs(Math.sin(t * Math.PI / per + (who === 'him' ? 1.2 : 0))) * 3);
+  }
+  const s = sprites[`${who}_${ch.dir}_${f}`];
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(Math.round(ch.x) - 6, Math.round(ch.y) - 1, 12, 2);
+  const x = Math.round(ch.x) - 8, y = Math.round(ch.y) - SH + bob;
+  if (ch.dir === 'side' && ch.flip) { g.save(); g.translate(x + SW, y); g.scale(-1, 1); g.drawImage(s, 0, 0); g.restore(); }
+  else g.drawImage(s, x, y);
+  if (performance.now() < alertUntil) {                         // red "!" alert
+    const t = (alertUntil - performance.now()) / 1400, pop = Math.round(Math.sin(Math.min(1, (1 - t) * 6) * Math.PI / 2) * 2);
+    const ax = Math.round(ch.x) - 1, ay = y - 10 - pop - (who === 'him' && her.carry ? 12 : 0);
+    px('#2a0d0d', ax - 1, ay - 1, 4, 9); px('#e8382c', ax, ay, 2, 5); px('#e8382c', ax, ay + 6, 2, 2); px('#ff8a7a', ax, ay, 1, 2);
+  }
+  if (who === 'her' && her.treat) TREAT_ICON[her.treat](Math.round(ch.x), y - 1 + Math.round(Math.sin(performance.now() / 200)));
+  if (who === 'him' && her.carry) ICON[her.carry](Math.round(ch.x), y - 2 + Math.round(Math.sin(performance.now() / 200)));   // he carries what she picks up
+}
+
+/* ============================================================
+   Game flow
+   ============================================================ */
+let stage = 0;              // how many parts are built
+let revealK = 1;            // 0..1 animation of the newest part
+let busy = false;           // walking a material to the lot / building
+let night = 0, ended = false, endT = 0;
+const particles = [], hearts = [];
+const banner = document.getElementById('banner'), bubble = document.getElementById('bubble');
+const endEl = document.getElementById('end');
+let bubbleUntil = 0, bubbleWho = her;
+
+function allHome(){ return ANIMALS.every(a => a.penned); }
+function needed(){ return STAGES[stage] ? STAGES[stage].item : null; }
+function setBanner(){
+  if (ended) { banner.style.opacity = 0; return; }
+  banner.style.opacity = 1;
+  const thief = ANIMALS.find(a => a.carry);
+  const extra = thief ? `<br><b>The ${thief.k.name} ran off with the ${LABEL[thief.carry.kind]}! Catch it to keep building!</b>`
+    : leads.length > 1 ? `<br>Lead the ${leads.map(o => o.k.name).join(' and the ')} into the pen`
+    : lead0() && lead0().friendly ? `<br>The ${lead0().k.name} is following you! Walk it into the pen`
+    : lead0() ? `<br>Lead the ${lead0().k.name} into the pen`
+    : '';
+  banner.innerHTML = (stage === 0 && !her.carry
+    ? `Let's build our home!<br>Tap the glowing <b>${STAGES[0].need}</b>`
+    : her.carry ? `Bring it to our lot...`
+    : stage >= STAGES.length ? `Our home is ready!`
+    : stage === STAGES.length - 1 && !allHome() ? `Last one! First bring every animal to the pen <b>(${ANIMALS.filter(a => a.penned).length}/${ANIMALS.length})</b>`
+    : `Next: <b>${STAGES[stage].need}</b>  (${stage}/${STAGES.length})`) + extra;
+}
+function say(text, who = her, ms = 1800){
+  bubble.textContent = text; bubbleWho = who; bubbleUntil = performance.now() + ms; bubble.style.opacity = 1;
+}
+function puff(x, y, n, cols){ for (let i = 0; i < n; i++) particles.push({ x, y, vx: (Math.random() - 0.5) * 40, vy: -Math.random() * 35 - 5, life: 0.6 + Math.random() * 0.5, t: 0, c: cols[i % cols.length] }); }
+function heart(x, y){ hearts.push({ x, y, t: 0 }); }
+
+/* tiny sounds */
+let actx = null;
+/* ---------- Audio: one shared Web Audio context (started on the first tap, as phones require) ---------- */
+let master = null, sfxBus = null, musicGain = null, musicEl = null, muted = false;
+function audioInit(){
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  try {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    master = actx.createGain(); master.connect(actx.destination);
+    sfxBus = actx.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+    if (CONFIG.music) {
+      musicEl = new Audio(CONFIG.music); musicEl.loop = true; musicEl.preload = 'auto'; musicEl.setAttribute('playsinline', '');
+      musicGain = actx.createGain(); musicGain.gain.value = 0;
+      try { actx.createMediaElementSource(musicEl).connect(musicGain); } catch (_) { musicEl.volume = CONFIG.musicVolume; }
+      musicGain.connect(master);
+      const p = musicEl.play(); if (p && p.catch) p.catch(() => {});
+      musicGain.gain.linearRampToValueAtTime(CONFIG.musicVolume, actx.currentTime + 2.5);   // gentle fade-in
+      document.getElementById('mute').classList.add('show');
+    }
+  } catch (_) { actx = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!musicEl) return;
+  if (document.hidden) musicEl.pause(); else if (!muted) musicEl.play().catch(() => {});
+});
+/* a tiny chip-tune synth: beep(start offset, freq, duration, wave, volume, slide-to freq) */
+function beep(at, f, dur, type = 'square', vol = 0.06, to = 0){
+  const t = actx.currentTime + at, o = actx.createOscillator(), v = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol, t + 0.008); v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(v).connect(sfxBus); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(at, dur, vol = 0.05, hp = 800){
+  const t = actx.currentTime + at, n = Math.floor(actx.sampleRate * dur), buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), v = actx.createGain();
+  src.buffer = buf; f.type = 'highpass'; f.frequency.value = hp; v.gain.value = vol;
+  src.connect(f).connect(v).connect(sfxBus); src.start(t);
+}
+const SFX = {
+  pickup(){ beep(0, 523, 0.07); beep(0.06, 784, 0.07); beep(0.12, 1047, 0.12); },                       // grab an item: bright "bling"
+  place(){ beep(0, 180, 0.12, 'square', 0.08, 70); noise(0, 0.12, 0.06, 300); beep(0.12, 659, 0.08, 'triangle', 0.08); beep(0.19, 988, 0.14, 'triangle', 0.08); },   // thunk + sparkle
+  leash(){ beep(0, 300, 0.1, 'square', 0.05, 1200); beep(0.11, 1400, 0.03, 'square', 0.05); beep(0.15, 1800, 0.05, 'square', 0.04); },   // rope zip + clip
+  pen(){ [523, 659, 784, 1047].forEach((f, i) => beep(i * 0.08, f, 0.12, 'square', 0.05)); beep(0.34, 1319, 0.22, 'triangle', 0.07); },  // happy jingle
+  steal(){ beep(0, 880, 0.1, 'square', 0.06, 990); beep(0.12, 660, 0.1, 'square', 0.06); beep(0.24, 440, 0.2, 'square', 0.06, 300); },     // "uh-oh!"
+  drop(){ beep(0, 784, 0.06); beep(0.06, 1175, 0.1); },                                                 // thief drops the item
+  treat(){ beep(0, 880, 0.06, 'triangle', 0.08); beep(0.06, 1320, 0.1, 'triangle', 0.08); },
+  munch(){ for (let i = 0; i < 3; i++) noise(i * 0.09, 0.05, 0.07, 1500); beep(0.3, 988, 0.12, 'triangle', 0.07); },
+  letter(){ [784, 988, 1175, 1568].forEach((f, i) => beep(i * 0.07, f, 0.14, 'triangle', 0.08)); },
+  dance(){ [523, 659, 784, 659, 880, 784, 1047].forEach((f, i) => beep(i * 0.12, f, 0.1, 'square', 0.045)); },
+  cast(){ beep(0, 900, 0.18, 'triangle', 0.06, 300); noise(0.16, 0.12, 0.05, 1200); },                    // whoosh + plop
+  bite(){ beep(0, 1200, 0.05, 'square', 0.06); beep(0.08, 1200, 0.05, 'square', 0.06); beep(0.16, 1600, 0.08, 'square', 0.06); },
+  catch(){ noise(0, 0.15, 0.06, 900); [659, 880, 1175, 1568].forEach((f, i) => beep(0.05 + i * 0.07, f, 0.12, 'square', 0.05)); },
+  miss(){ beep(0, 440, 0.15, 'square', 0.05, 330); beep(0.16, 330, 0.25, 'square', 0.05, 220); },
+  mount(){ beep(0, 392, 0.08, 'square', 0.05); beep(0.08, 523, 0.08, 'square', 0.05); beep(0.16, 784, 0.14, 'square', 0.05); noise(0, 0.08, 0.04, 2000); },
+  hoof(){ beep(0, 220, 0.03, 'triangle', 0.05, 140); beep(0.09, 260, 0.03, 'triangle', 0.045, 160); },
+  hit(){ beep(0, 1568, 0.05, 'triangle', 0.04); },
+  finale(){ [523, 659, 784, 1047, 784, 1047].forEach((f, i) => beep(i * 0.11, f, 0.18, 'square', 0.05)); },
+};
+function sfx(name){
+  if (!CONFIG.sound || !actx || muted) return;
+  try { SFX[name](); } catch (_) {}
+}
+function chime(){}                                       // (older calls; replaced by sfx)
+
+function animalAt(x, y){
+  for (const a of ANIMALS.slice().sort((p, q) => q.y - p.y)) {
+    const hw = (a.bw || 20) / 2 + 3, h = (a.bh || 20) + 3;
+    if (Math.abs(x - a.x) < hw && y > a.y - h && y < a.y + 4) return a;
+  }
+  return null;
+}
+function tapWorld(x, y){
+  if (ended || cardOpen || rhythm.on) return;
+  if (fishing.phase === 'meter' || fishing.phase === 'reel' || fishing.phase === 'show') return;
+  if (fishing.phase) stopFishing();                   // tapping elsewhere while waiting puts the rod away
+  // on horseback: tap her or the horse to hop off
+  if (riding) {
+    const a = riding;
+    if (Math.abs(x - a.x) < (a.bw || 20) / 2 + 3 && y > (her.rideTop || a.y - 30) - 2 && y < a.y + 4) { dismount(); return; }
+  }
+  // a hidden surprise?
+  const si = SURPRISES.findIndex((sp, i) => !surpriseFound[i] && Math.abs(sp.x - x) < 8 && y > sp.y - 12 && y < sp.y + 5);
+  if (si >= 0 && !busy) { walkTo(SURPRISES[si].x, SURPRISES[si].y + 5, () => openSurprise(si)); return; }
+  // tapped either of them? dance break, with the rhythm game
+  const nearA = animalAt(x, y), nearI = ITEMS.find(i => !i.taken && !i.held && Math.abs(i.x - x) < 8 && y > i.y - 14 && y < i.y + 4);
+  for (const [ch, who] of [[her, 'her'], [him, 'him']]) {
+    if (ch === her && riding) continue;
+    if (nearA && Math.hypot(x - nearA.x, y - (nearA.y - (nearA.bh || 20) / 2)) < Math.hypot(x - ch.x, y - (ch.y - 10))) continue;   // the animal was the closer tap
+    if (nearI && Math.hypot(x - nearI.x, y - (nearI.y - 5)) < Math.hypot(x - ch.x, y - (ch.y - 10))) continue;
+    if (Math.abs(x - ch.x) < 8 && y > ch.y - 22 && y < ch.y + 2) {
+      if (busy || ANIMALS.some(o => o.carry)) { say(busy ? "After we build this!" : `Catch the ${ANIMALS.find(o => o.carry).k.name} first!`, him, 1400); return; }
+      startRhythm(); return;
+    }
+  }
+  // tapped the water? go fishing
+  if (inPond(x, y, 0) && !busy) {
+    if (ANIMALS.some(o => o.carry)) { say(`Catch the ${ANIMALS.find(o => o.carry).k.name} first!`, him, 1400); return; }
+    startFishing(x, y); return;
+  }
+  // a treat on the ground?
+  if (TREAT && !her.treat && !busy && Math.abs(TREAT.x - x) < 7 && y > TREAT.y - 11 && y < TREAT.y + 4) {
+    const t = TREAT;
+    walkTo(t.x, t.y + 3, () => { if (TREAT === t) { her.treat = t.kind; TREAT = null; treatTimer = CONFIG.treatEvery; sfx('treat'); say(`An ${t.kind === 'apple' ? 'apple' : 'carrot'}! Who's hungry?`, her, 1600); } });
+    return;
+  }
+  const onItem = ITEMS.some(i => !i.taken && !i.held && Math.abs(i.x - x) < 8 && y > i.y - 14 && y < i.y + 4);
+  const a = onItem && !busy ? null : animalAt(x, y);
+  if (a) {
+    if (a.carry) { her.chase = a; her.chaseMode = 'catch'; route = []; say("Come back here!", her, 1200); return; }
+    if (her.treat && !a.leashed && !busy) {
+      if (a.penned) { walkTo(a.x, Math.min(a.y + 8, PEN.y1 - 6), () => feed(a)); return; }
+      if (!ANIMALS.some(o => o.carry)) { her.chase = a; her.chaseMode = 'feed'; route = []; return; }
+    }
+    const thief = ANIMALS.find(o => o.carry);
+    if (thief) { say(`Catch the ${thief.k.name} first!`, him, 1400); return; }
+    if (a.penned) { heart(a.x, a.y - (a.bh || 20) - 2); if (leads.length || inPen(x, y)) walkTo(x, y); return; }
+    if (a.leashed && isHorse(a) && !riding && !busy && leads[0] === a) { walkTo(a.x, a.y + 1, () => mount(a)); return; }
+    if (a.leashed || busy) return;
+    if (leads.length) { say("One at a time!", him, 1400); return; }
+    her.chase = a; her.chaseMode = 'leash'; route = []; return;
+  }
+  if (busy) return;
+  const thief = ANIMALS.find(o => o.carry);
+  if (thief && ITEMS.some(i => !i.taken && !i.held && Math.abs(i.x - x) < 9 && y > i.y - 16 && y < i.y + 5)) {
+    say(`Catch the ${thief.k.name} first!`, him, 1400); return;
+  }
+  // tapped a material?
+  const it = ITEMS.find(i => !i.taken && !i.held && Math.abs(i.x - x) < 9 && y > i.y - 16 && y < i.y + 5);
+  if (it) {
+    walkTo(it.x, it.y + 4, () => {
+      if (it.held) { say("It ran off with it!", him, 1400); return; }
+      if (it.kind === needed() && stage === STAGES.length - 1 && !allHome()) {
+        say(`Let's bring everyone home first! (${ANIMALS.filter(a => a.penned).length}/${ANIMALS.length})`, him, 2200); return;
+      }
+      if (it.kind === needed() && !her.carry) {
+        it.taken = true; her.carry = it.kind; busy = true; sfx('pickup');
+        puff(it.x, it.y - 4, 8, ['#fff6d6', '#ffd76a']);
+        say("I got it!", him, 1100); setBanner();
+        setTimeout(() => { if (her.carry) walkTo(LOT.cx + (her.x < LOT.cx ? -6 : 6), LOT.base + 16, build); }, 350);
+      } else {
+        say(needed() ? `Not yet... ${STAGES[stage].need} first` : "All done!", him, 1900);
+      }
+    });
+    return;
+  }
+  walkTo(x, y);
+}
+function build(){
+  if (!her.carry) { busy = false; setBanner(); return; }   // it was dropped on the way (a thief!)
+  her.dir = 'up'; him.dir = 'up';
+  const kind = her.carry; her.carry = null;
+  stage++; revealK = 0; sfx('place');
+  puff(LOT.cx, LOT.base - 10, 18, ['#f2e3c0', '#c9a26b', '#ffffff']);
+  setTimeout(() => {
+    say(STAGES[stage - 1].done, Math.random() < 0.5 ? her : him, 2000);
+    heart((her.x + him.x) / 2, Math.min(her.y, him.y) - 28);
+    busy = false; setBanner();
+    if (stage === STAGES.length) setTimeout(finish, 1600);
+  }, 700);
+  void kind;
+}
+function finish(){
+  if (riding) dismount(true);
+  ended = true; endT = 0; setBanner();
+  walkTo(LOT.cx + 6, LOT.base + 13, () => { her.dir = 'down'; });
+  sfx('finale');
+}
+
+/* ============================================================
+   Render loop
+   ============================================================ */
+let last = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+  updateChars(dt);
+  updateAnimals(dt);
+  updateTreats(dt);
+  updateFishing(dt);
+  if (dancing() && now > nextNote) {                 // music notes float up while they dance
+    nextNote = now + 380;
+    const who = Math.random() < 0.5 ? her : him;
+    particles.push({ x: who.x + (Math.random() - 0.5) * 8, y: who.y - 26, vx: (Math.random() - 0.5) * 8, vy: -14, life: 1.3, t: 0, c: '#fff8e6', note: true });
+  }
+  if (!dancing() && danceUntil && danceUntil < now && danceUntil > now - 100) { her.dir = 'down'; him.dir = 'down'; }
+  if (riding && her.moving && now > nextHoof) { nextHoof = now + 300; sfx('hoof'); }
+  updateRhythm(now);
+  if (revealK < 1) revealK = Math.min(1, revealK + dt / 0.7);
+  if (ended) { endT += dt; night = clamp(endT / 3); if (endT > 3.4 && !endEl.classList.contains('show')) { endEl.classList.add('show'); heart((her.x + him.x) / 2, her.y - 26); } if (endT > 3.4 && Math.floor(endT * 1.2) !== Math.floor((endT - dt) * 1.2)) heart((her.x + him.x) / 2 + (Math.random() - 0.5) * 10, her.y - 26); }
+
+  g.setTransform(2, 0, 0, 2, 0, 0); g.imageSmoothingEnabled = false;
+  g.drawImage(bg, 0, 0, IW, IH);
+  // depth-sorted things
+  const things = [];
+  TREES.forEach(t => things.push({ y: t.y, draw: () => drawTree(t) }));
+  things.push({ y: LOT.base + 6, draw: () => drawHouse(stage, revealK, night > 0.5) });
+  things.push({ y: PEN.y1, draw: drawPenFront });
+  ITEMS.forEach(it => { if (!it.taken && !it.held) things.push({ y: it.y, draw: () => {
+    const need = it.kind === needed() && !her.carry && !ended;
+    if (need) {                                           // glow + bouncing arrow on the one we need
+      const p = (Math.sin(now / 180) + 1) / 2;
+      g.fillStyle = `rgba(255,240,170,${0.25 + 0.3 * p})`; g.fillRect(it.x - 8, it.y - 13, 16, 15);
+      const ay = it.y - 22 - Math.round(p * 3);
+      px('#ffd76a', it.x - 2, ay, 5, 1); px('#ffd76a', it.x - 1, ay + 1, 3, 1); px('#ffd76a', it.x, ay + 2, 1, 1);
+    }
+    ICON[it.kind](it.x, it.y);
+  } }); });
+  ANIMALS.forEach(a => things.push({ y: a.y, draw: () => drawAnimal(a) }));
+  SURPRISES.forEach((sp, i) => things.push({ y: sp.kind === 'tree' ? sp.y + 5 : sp.y, draw: () => drawSurprise(sp, i, now) }));
+  if (TREAT) things.push({ y: TREAT.y, draw: () => {
+    const p = (Math.sin(now / 220) + 1) / 2, bob = Math.round(p);
+    g.fillStyle = `rgba(255,240,170,${0.18 + 0.22 * p})`; g.fillRect(TREAT.x - 5, TREAT.y - 9, 10, 10);
+    TREAT_ICON[TREAT.kind](TREAT.x, TREAT.y - bob);
+  } });
+  if (!riding) things.push({ y: her.y, draw: () => drawChar(her, 'her') });
+  things.push({ y: him.y + 0.1, draw: () => drawChar(him, 'him') });
+  things.sort((a, b) => a.y - b.y).forEach(t => t.draw());
+
+  // chimney smoke once it exists
+  if (stage >= 6) {
+    const chx = LOT.cx + 19, top = LOT.base - 24 - 30;
+    for (let i = 0; i < 4; i++) {
+      const tt = ((now / 1000 + i * 0.6) % 2.4) / 2.4;
+      g.fillStyle = `rgba(235,235,235,${0.55 * (1 - tt)})`;
+      g.fillRect(Math.round(chx + Math.sin(tt * 6 + i) * 3), Math.round(top - tt * 22), 3, 3);
+    }
+  }
+  // the leash: a sagging rope from her hand to the animal
+  for (const ln of leads) if (!ln.friendly && ln.nx !== undefined) {
+    const hx = her.x + (her.dir === 'side' ? (her.flip ? -5 : 5) : 5), hy = her.y - 8, ax = ln.nx, ay = ln.ny;
+    const sag = 4 + Math.min(6, Math.hypot(ax - hx, ay - hy) * 0.08);
+    for (let i = 0; i <= 60; i++) {
+      const t = i / 60, x = lerp(hx, ax, t), y = lerp(hy, ay, t) + Math.sin(t * Math.PI) * sag;
+      g.fillStyle = '#6b4a2a'; g.fillRect(Math.round(x * 2) / 2, Math.round(y * 2) / 2 + 0.5, 0.5, 0.5);
+      g.fillStyle = '#e0bd82'; g.fillRect(Math.round(x * 2) / 2, Math.round(y * 2) / 2, 0.5, 0.5);
+    }
+    px('#c4503f', Math.round(ax) - 1, Math.round(ay) - 1, 2, 2);         // little red collar clip
+  }
+  drawFishing(now);
+  // particles + hearts
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i]; p.t += dt; p.vy += 60 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.t > p.life) { particles.splice(i, 1); continue; }
+    g.globalAlpha = 1 - p.t / p.life;
+    if (p.note) { p.vy = -14; px('#2a1d14', p.x - 1, p.y + 2, 3, 2); px('#ffd76a', p.x, p.y + 2, 2, 1); px('#2a1d14', p.x + 1, p.y - 3, 1, 5); px('#2a1d14', p.x + 2, p.y - 3, 2, 1); }
+    else px(p.c, p.x, p.y, 2, 2);
+    g.globalAlpha = 1;
+  }
+  for (let i = hearts.length - 1; i >= 0; i--) {
+    const h = hearts[i]; h.t += dt; if (h.t > 1.6) { hearts.splice(i, 1); continue; }
+    const x = Math.round(h.x), y = Math.round(h.y - h.t * 14);
+    g.globalAlpha = 1 - h.t / 1.6;
+    px('#ff5d7a', x - 3, y, 3, 2); px('#ff5d7a', x + 1, y, 3, 2); px('#ff5d7a', x - 3, y + 2, 7, 2); px('#ff5d7a', x - 2, y + 4, 5, 1); px('#ff5d7a', x - 1, y + 5, 3, 1); px('#ff5d7a', x, y + 6, 1, 1);
+    px('#ffd1dc', x - 2, y + 1, 1, 1);
+    g.globalAlpha = 1;
+  }
+  // night falls at the end; windows and lamp glow
+  if (night > 0) {
+    g.fillStyle = `rgba(16,20,58,${0.62 * night})`; g.fillRect(0, 0, IW, IH);
+    const glowAt = (x, y, r, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(255,214,110,${a})`); gr.addColorStop(1, 'rgba(255,214,110,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); };
+    const x0 = LOT.cx - 54, b = LOT.base;
+    for (const wx of [x0 + 15, x0 + 37, x0 + 71, x0 + 93]) glowAt(wx, b - 14, 14, 0.32 * night);
+    glowAt(LOT.cx - 10, b - 13, 13, 0.45 * night); glowAt(LOT.cx + 10, b - 13, 13, 0.45 * night);
+    if (stage >= 8) for (const ly of [b + 13, b + 25]) for (const sd of [-1, 1]) glowAt(Math.round(pathX(ly) + sd * 10.5) + 0.5, ly - 5.5, 7, 0.4 * night);
+    for (let i = 0; i < 14; i++) {                          // fireflies
+      const fx = (Math.sin(now / 1400 + i * 2.1) * 0.5 + 0.5) * IW, fy = IH * 0.45 + (Math.sin(now / 1100 + i * 1.3) * 0.5 + 0.5) * IH * 0.5;
+      g.fillStyle = `rgba(255,240,140,${night * (0.4 + 0.6 * Math.max(0, Math.sin(now / 300 + i)))})`; g.fillRect(Math.round(fx), Math.round(fy), 1, 1);
+    }
+  }
+  // scale up to the screen with crisp pixels
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(lo, 0, 0, IW * 2, IH * 2, 0, 0, IW * SCALE * dpr, IH * SCALE * dpr);
+
+  // speech bubble follows its speaker
+  if (bubbleUntil && now > bubbleUntil) { bubble.style.opacity = 0; bubbleUntil = 0; }
+  bubble.style.left = (bubbleWho.x * SCALE) + 'px';
+  bubble.style.top = ((bubbleWho === her && riding ? her.rideTop - 3 : bubbleWho.y - 26 - (bubbleWho === him && her.carry ? 12 : 0)) * SCALE) + 'px';   // above anything he carries
+}
+
+/* ============================================================
+   Setup, resize, input
+   ============================================================ */
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  IW = Math.max(150, Math.min(240, Math.round(W / 2.2)));       // pixel world width: chunky pixels on phones
+  SCALE = W / IW;
+  IH = Math.ceil(H / SCALE);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  lo.width = IW * 2; lo.height = IH * 2;       // sprites are drawn at 2x onto the finer meadow
+  layout(); drawBackground(); if (!ANIMALS.length) initAnimals();
+  if (!her.x) { her.x = LOT.cx + 6; her.y = IH * 0.8; him.x = LOT.cx - 10; him.y = IH * 0.8; }
+}
+let rt = 0;
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
+  if (window.innerWidth === W && Math.abs(window.innerHeight - H) < 2) return;   // nothing really changed
+  if (riding) dismount(true);
+  const fx = her.x / IW, fy = her.y / IH, gx = him.x / IW, gy = him.y / IH;
+  const its = ITEMS.map(i => ({ taken: i.taken, fx: i.x / IW, fy: i.y / IH, held: ANIMALS.indexOf(i.held) }));
+  const ans = ANIMALS.map(a => ({ fx: a.x / IW, fy: a.y / IH }));
+  resize();
+  her.x = fx * IW; her.y = fy * IH; him.x = gx * IW; him.y = gy * IH; trail = []; route = []; target = null; her.chase = null;
+  ITEMS.forEach((it, i) => { it.taken = its[i].taken; it.x = Math.round(its[i].fx * IW); it.y = Math.round(its[i].fy * IH); it.held = null; });
+  ANIMALS.forEach((a, i) => {
+    a.x = ans[i].fx * IW; a.y = ans[i].fy * IH; a.tx = null; a.carry = null;
+    if (a.penned && !penRoam(a.x, a.y)) { a.x = lerp(PEN.x0 + 16, PEN.x1 - 16, Math.random()); a.y = lerp(PEN.y0 + 14, PEN.y1 - 6, Math.random()); }
+    if (!a.penned && !a.leashed) for (let n = 0; n < 300 && animalBlocked(a.x, a.y); n++) { a.x = Math.random() * IW; a.y = IH * (0.55 + Math.random() * 0.45); }
+  });
+  its.forEach((st, i) => { if (st.held >= 0) { ANIMALS[st.held].carry = ITEMS[i]; ITEMS[i].held = ANIMALS[st.held]; } });
+  setBanner();
+}, 150); });
+resize();
+setBanner();
+setTimeout(() => say("Let's build our home!", her, 2200), 600);
+setTimeout(() => { if (!leads.length && !ANIMALS.some(a => a.penned)) say("Tap an animal to bring it to the pen!", him, 2600); }, 6000);
+
+cv.addEventListener('pointerdown', audioInit);
+let swallowUp = false;
+cv.addEventListener('pointerdown', () => { if (fishing.phase === 'meter') { hook(); swallowUp = true; } });
+cv.addEventListener('pointerup', (e) => {
+  if (swallowUp) { swallowUp = false; return; }
+  const x = e.clientX / SCALE, y = e.clientY / SCALE;
+  tapWorld(x, y);
+});
+cv.addEventListener('contextmenu', e => e.preventDefault());
+document.getElementById('again').addEventListener('click', () => {
+  stage = 0; revealK = 1; ended = false; night = 0; busy = false; her.carry = null; her.treat = null; TREAT = null; treatTimer = 6;
+  riding = null; leads = []; her.chase = null; target = null; route = []; onArrive = null;
+  layout(); ANIMALS = []; initAnimals();             // fresh materials, and the animals back out in the meadow
+  endEl.classList.remove('show'); setBanner();
+  say("Let's do it again!", her, 1800);
+});
+document.getElementById('mute').addEventListener('click', (e) => {
+  muted = !muted; e.currentTarget.classList.toggle('off', muted);
+  if (master) master.gain.value = muted ? 0 : 1;
+});
+endEl.querySelector('h1').textContent = CONFIG.endTitle;
+endEl.querySelector('p').innerHTML = CONFIG.endLine;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
